@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Xna.Framework;
+using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Menus;
 using StardewValley.Monsters;
@@ -35,6 +36,13 @@ internal class VillagerInfo
     /// <summary>Can be dated and married (#53).</summary>
     public bool Datable { get; set; }
 }
+
+/// <summary>
+/// A villager as any screen can know them: who, where, and the facts the tools read about them. Plain data, so a farmhand
+/// screen can use what the host screen saw (<see cref="NpcInfo.TrackHost"/>).
+/// </summary>
+internal sealed record NpcSpot(string Name, string DisplayName, string Location, int X, int Y, bool IsVillager, bool CanSocialize,
+    bool Datable, string BirthdaySeason, int BirthdayDay);
 
 /// <summary>
 /// Pure helpers behind villagers(), talk_to and travel_to for people (#9): finding villagers, their
@@ -93,46 +101,109 @@ internal static class NpcInfo
 
     // ------------------------------------------------------------------ finding people
 
-    /// <summary>Every villager the player can befriend (one per name).</summary>
-    public static List<NPC> Social() =>
-        Utility.getAllCharacters()
-            .Where(n => n != null && n is not Monster && n.CanSocialize)
-            .GroupBy(n => n.Name)
-            .Select(g => g.First())
-            .ToList();
+    // Where everyone was at the host screen's last look. A farmhand screen keeps only the maps a farmer stands on (and the
+    // farm) up to date, so its own copy of a villager elsewhere is where they were when it last saw them, or gone altogether:
+    // in EP01 P2 and P3 got "No villager called Lewis" 31 times, every time in a house the villager had just left.
+    private static List<NpcSpot> _hostSpots = new();
 
-    /// <summary>The NPC called <paramref name="name"/> (name or display name, any case) anywhere in the world, or null.</summary>
+    /// <summary>Ticks between two of the host's looks (<see cref="TrackHost"/>).</summary>
+    public const int TrackEvery = 30;
+
+    /// <summary>Host screen, every <see cref="TrackEvery"/> ticks: remember where every villager is, for the farmhand screens.</summary>
+    public static void TrackHost()
+    {
+        if (Context.IsWorldReady && Context.IsMainPlayer && Players.SplitScreen)
+            _hostSpots = Local().Select(n => SpotOf(n)).ToList();
+    }
+
+    /// <summary>Forget the host's last look (another save, or the title screen).</summary>
+    public static void Reset() => _hostSpots = new List<NpcSpot>();
+
+    private static IEnumerable<NPC> Local() => Utility.getAllCharacters().Where(n => n != null && n is not Monster);
+
+    private static NpcSpot SpotOf(NPC n, string? location = null) =>
+        new(n.Name, n.displayName, location ?? n.currentLocation?.NameOrUniqueName ?? "?", n.TilePoint.X, n.TilePoint.Y, n.IsVillager,
+            n.CanSocialize, n.datable.Value, (Convert.ToString(n.Birthday_Season) ?? "").Trim().ToLowerInvariant(), Convert.ToInt32(n.Birthday_Day));
+
+    /// <summary>
+    /// Every NPC (no monsters) where they really are: this screen's own copies on the host; on a farmhand screen the host's last
+    /// look, with the farmhand's own live copies for the map it stands on. Whether a villager can be befriended is asked as
+    /// this screen's farmer, since the game's conditions for it may read the player.
+    /// </summary>
+    public static List<NpcSpot> Everyone()
+    {
+        if (Context.IsMainPlayer || _hostSpots.Count == 0)
+            return Local().Select(n => SpotOf(n)).ToList();
+        var here = Game1.currentLocation?.characters.Where(n => n != null && n is not Monster)
+            .GroupBy(n => n.Name).ToDictionary(g => g.Key, g => g.First()) ?? new Dictionary<string, NPC>();
+        var spots = _hostSpots.Select(s => here.TryGetValue(s.Name, out var live)
+                ? SpotOf(live)
+                : s with { CanSocialize = s.IsVillager && NPC.CanSocializePerData(s.Name, Game1.getLocationFromName(s.Location) ?? Game1.currentLocation) })
+            .ToList();
+        var known = spots.Select(s => s.Name).ToHashSet();
+        spots.AddRange(here.Values.Where(n => !known.Contains(n.Name)).Select(n => SpotOf(n))); // arrived since the host's last look
+        return spots;
+    }
+
+    /// <summary>Every villager the player can befriend (one per name).</summary>
+    public static List<NpcSpot> Social() =>
+        Everyone().Where(s => s.CanSocialize).GroupBy(s => s.Name).Select(g => g.First()).ToList();
+
+    /// <summary>Where the NPC called <paramref name="name"/> (name or display name, any case) is, festival villagers included, or null.</summary>
+    public static NpcSpot? Find(string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0) return null;
+        if (AgentTools.FestivalActor(name) is { } fest) return SpotOf(fest, Game1.currentLocation?.NameOrUniqueName);
+        return Match(Everyone(), s => s.Name, s => s.DisplayName, name);
+    }
+
+    /// <summary>
+    /// The NPC called <paramref name="name"/> as this screen has them, for what does not change as they walk around (gift
+    /// tastes). Their place may be out of date on a farmhand screen: <see cref="Find"/> says where they are.
+    /// </summary>
     public static NPC? ByName(string name)
     {
         name = name.Trim();
         if (name.Length == 0) return null;
-        if (AgentTools.FestivalActor(name) is { } fest) return fest;
-        var all = Utility.getAllCharacters().Where(n => n != null && n is not Monster).ToList();
-        return all.FirstOrDefault(n => n.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) ??
-               all.FirstOrDefault(n => n.displayName.Equals(name, StringComparison.OrdinalIgnoreCase));
+        return AgentTools.FestivalActor(name) ?? Match(Local(), n => n.Name, n => n.displayName, name);
     }
 
-    public static bool OnMap(NPC npc, GameLocation? loc) =>
-        (loc != null && npc.currentLocation != null && npc.currentLocation.NameOrUniqueName == loc.NameOrUniqueName) ||
-        AgentTools.FestivalActors().Contains(npc);
+    /// <summary>The NPC called <paramref name="name"/> on <paramref name="loc"/>, the map this screen's farmer stands on, or null: the one to walk up to and talk to.</summary>
+    public static NPC? Here(string name, GameLocation? loc)
+    {
+        name = name.Trim();
+        if (name.Length == 0) return null;
+        if (AgentTools.FestivalActor(name) is { } fest) return fest;
+        return loc == null ? null : Match(loc.characters.Where(n => n != null && n is not Monster), n => n.Name, n => n.displayName, name);
+    }
 
-    public static string WhereIs(NPC npc) =>
-        npc.currentLocation == null ? "an unknown place" : $"{npc.currentLocation.NameOrUniqueName} ({npc.TilePoint.X},{npc.TilePoint.Y})";
+    /// <summary>By name first, then by display name, ignoring case.</summary>
+    private static T? Match<T>(IEnumerable<T> all, Func<T, string> name, Func<T, string> display, string asked) where T : class
+    {
+        var list = all.ToList();
+        return list.FirstOrDefault(x => name(x).Equals(asked, StringComparison.OrdinalIgnoreCase)) ??
+               list.FirstOrDefault(x => display(x).Equals(asked, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static bool OnMap(NpcSpot spot, GameLocation? loc) => loc != null && spot.Location == loc.NameOrUniqueName;
+
+    public static string WhereIs(NpcSpot spot) => spot.Location == "?" ? "an unknown place" : $"{spot.Location} ({spot.X},{spot.Y})";
 
     // ------------------------------------------------------------------ friendship state
 
-    public static VillagerInfo Of(Farmer who, NPC npc)
+    public static VillagerInfo Of(Farmer who, NpcSpot npc)
     {
         var info = new VillagerInfo
         {
             Name = npc.Name,
-            DisplayName = npc.displayName,
-            Location = npc.currentLocation?.NameOrUniqueName ?? "?",
-            X = npc.TilePoint.X,
-            Y = npc.TilePoint.Y,
-            BirthdaySeason = (Convert.ToString(npc.Birthday_Season) ?? "").Trim().ToLowerInvariant(),
-            BirthdayDay = Convert.ToInt32(npc.Birthday_Day),
-            Datable = npc.datable.Value
+            DisplayName = npc.DisplayName,
+            Location = npc.Location,
+            X = npc.X,
+            Y = npc.Y,
+            BirthdaySeason = npc.BirthdaySeason,
+            BirthdayDay = npc.BirthdayDay,
+            Datable = npc.Datable
         };
         info.DaysToBirthday = DaysToBirthday(info.BirthdaySeason, info.BirthdayDay);
         if (who.friendshipData.TryGetValue(npc.Name, out var f))
@@ -232,22 +303,25 @@ internal static class NpcInfo
         return sb.ToString();
     }
 
-    /// <summary>Details for one villager: state, your last gift, what other players were seen doing, tastes found out so far.</summary>
-    public static string Detail(Farmer who, NPC npc, string viewerSeat, bool revealTastes)
+    /// <summary>
+    /// Details for one villager: state, your last gift, what other players were seen doing, tastes found out so far.
+    /// <paramref name="npc"/> is this screen's copy of them, for the game's own gift tastes (RevealGiftTastes); null leaves those out.
+    /// </summary>
+    public static string Detail(Farmer who, NpcSpot spot, NPC? npc, string viewerSeat, bool revealTastes)
     {
-        var v = Of(who, npc);
+        var v = Of(who, spot);
         var book = NpcKnowledge.Book(who);
         var sb = new StringBuilder();
         sb.AppendLine(Line(v));
         if (!v.Met) sb.AppendLine("You have not met them yet: talk_to introduces you.");
-        sb.AppendLine(Romance.Requirements(who, npc, v));
+        sb.AppendLine(Romance.Requirements(who, v));
 
-        if (book.LastGift.TryGetValue(npc.Name, out var last))
+        if (book.LastGift.TryGetValue(spot.Name, out var last))
             sb.AppendLine($"Your last gift to them: {ItemName(last.ItemId)} on farm day {last.Day}; they {TasteVerb(last.Taste)} it ({Signed(last.Points)} points).");
-        var seen = NpcKnowledge.SeenText(npc.Name, viewerSeat);
+        var seen = NpcKnowledge.SeenText(spot.Name, viewerSeat);
         if (seen != null) sb.AppendLine("Seen: " + seen + ".");
 
-        if (book.Tastes.TryGetValue(npc.Name, out var known) && known.Count > 0)
+        if (book.Tastes.TryGetValue(spot.Name, out var known) && known.Count > 0)
         {
             sb.AppendLine("What you found out about their tastes by gifting:");
             foreach (var word in new[] { "loved", "liked", "neutral", "disliked", "hated" })
@@ -262,6 +336,7 @@ internal static class NpcInfo
         var stacks = who.Items.OfType<SObject>().GroupBy(i => i.QualifiedItemId).ToList();
         if (stacks.Count > 0)
         {
+            revealTastes &= npc != null;
             sb.AppendLine(revealTastes ? "Their reaction to what you carry (RevealGiftTastes is on, straight from the game data):" : "Their reaction to what you carry:");
             foreach (var g in stacks)
             {
@@ -270,8 +345,8 @@ internal static class NpcInfo
                 if (SpecialGifts.Contains(first.Name))
                     taste = "a special item, not a normal gift";
                 else if (revealTastes)
-                    taste = TasteWord((int)npc.getGiftTasteForThisItem(first));
-                else if (NpcKnowledge.TryTaste(book, npc.Name, g.Key, out var code))
+                    taste = TasteWord((int)npc!.getGiftTasteForThisItem(first));
+                else if (NpcKnowledge.TryTaste(book, spot.Name, g.Key, out var code))
                     taste = TasteWord(code) + " (you gave it before)";
                 else
                     taste = "unknown (give one to find out)";
@@ -297,9 +372,9 @@ internal static class NpcInfo
         if (PlaceAliases.TryGetValue(key, out var shop) && Game1.getLocationFromName(shop) != null)
             return (shop, AreaAliases.Contains(key) ? "" : $"{key} works in {shop}.");
 
-        var npc = ByName(key);
-        if (npc?.currentLocation != null)
-            return (npc.currentLocation.Name, $"{npc.displayName} was in {WhereIs(npc)} when you set off; they may have moved.");
+        var npc = Find(key);
+        if (npc != null && Game1.getLocationFromName(npc.Location) is { } there)
+            return (there.Name, $"{npc.DisplayName} was in {WhereIs(npc)} when you set off; they may have moved.");
         return (null, "");
     }
 
@@ -364,7 +439,8 @@ public static partial class AgentTools
         new()
         {
             Name = "talk_to",
-            Description = "Find a villager, walk to them and talk. Optionally give them an item from your inventory as a gift. " +
+            Description = "Find a villager, walk up to them and talk. Optionally give them an item from your inventory as a gift. " +
+                          "Someone walking somewhere is followed and talked to as soon as you are next to them (a corner tile is close enough). " +
                           "If they are on another map you travel there first (go=false: just tell me where they are). " +
                           "Reports where they were, your friendship points before and after, their first line and the reaction to a gift. " +
                           "Talking counts once a day; at most 1 gift per day and 2 per week. Time spent travelling is game time.",
@@ -397,13 +473,13 @@ public static partial class AgentTools
             c.Result = NpcInfo.Roster(P);
             yield break;
         }
-        var npc = NpcInfo.ByName(name);
-        if (npc == null)
+        var spot = NpcInfo.Find(name);
+        if (spot == null)
         {
             c.Fail($"No villager called \"{name}\". Call villagers() without a name for the list.");
             yield break;
         }
-        c.Result = NpcInfo.Detail(P, npc, Rt.Log.Player, Config.RevealGiftTastes);
+        c.Result = NpcInfo.Detail(P, spot, NpcInfo.ByName(spot.Name), Rt.Log.Player, Config.RevealGiftTastes);
     }
 
     private static bool NpcFlag(JsonElement a, string name, bool def)
@@ -419,25 +495,25 @@ public static partial class AgentTools
         P.friendshipData.TryGetValue(name, out var f) ? (f.Points, f.TalkedToToday, f.GiftsToday) : (0, false, 0);
 
     /// <summary>Why talking or gifting is pointless right now, or null. Only refuses what the game would refuse for sure.</summary>
-    private static string? TalkRefusal(NPC npc, Item? gift)
+    private static string? TalkRefusal(NpcSpot npc, Item? gift)
     {
         if (Game1.eventUp && Game1.CurrentEvent is { isFestival: true } && gift == null) return null;
         if (!P.friendshipData.TryGetValue(npc.Name, out var f)) return null; // not met yet: the first talk introduces you
         if (gift == null)
         {
             return f.TalkedToToday
-                ? $"You already talked to {npc.displayName} today: talking gives friendship once a day. Give a gift (gift_item) or come back tomorrow."
+                ? $"You already talked to {npc.DisplayName} today: talking gives friendship once a day. Give a gift (gift_item) or come back tomorrow."
                 : null;
         }
         // A bouquet or Mermaid's Pendant is not an ordinary gift (#53): the game decides whether it is accepted today.
         if (gift is SObject special && NpcInfo.SpecialGifts.Contains(special.Name)) return null;
         if (f.GiftsToday >= 1)
-            return $"You already gave {npc.displayName} a gift today (limit 1 per day). Try again tomorrow.";
+            return $"You already gave {npc.DisplayName} a gift today (limit 1 per day). Try again tomorrow.";
         // Birthdays and spouses are exempt from the weekly limit in the vanilla game, so the game decides those.
         bool spouse = f.Status.ToString().Equals("Married", StringComparison.OrdinalIgnoreCase);
         bool birthday = NpcInfo.Of(P, npc).DaysToBirthday == 0;
         if (f.GiftsThisWeek >= 2 && !spouse && !birthday)
-            return $"You already gave {npc.displayName} 2 gifts this week (the limit; it starts over on Monday). Talk to them instead, or wait.";
+            return $"You already gave {npc.DisplayName} 2 gifts this week (the limit; it starts over on Monday). Talk to them instead, or wait.";
         return null;
     }
 
@@ -452,8 +528,8 @@ public static partial class AgentTools
             c.Fail("A menu or dialogue is open. Finish it with respond() or close_menu first.");
             yield break;
         }
-        var npc = NpcInfo.ByName(name);
-        if (npc == null) { c.Fail($"No villager called \"{name}\". villagers() lists who you can talk to."); yield break; }
+        var spot = NpcInfo.Find(name);
+        if (spot == null) { c.Fail($"No villager called \"{name}\". villagers() lists who you can talk to."); yield break; }
         bool go = NpcFlag(a, "go", true);
 
         Item? giftItem = null;
@@ -466,51 +542,58 @@ public static partial class AgentTools
             giftItem = P.Items[giftSlot];
         }
 
-        var refusal = TalkRefusal(npc, giftItem);
+        var refusal = TalkRefusal(spot, giftItem);
         if (refusal != null) { c.Fail(refusal); yield break; }
 
         int startMinutes = NpcMinutes();
-        bool traveled = false, opened = false;
+        bool traveled = false, opened = false, gaveUp = false;
         string failure = "";
         var before = (Points: 0, Talked: false, GiftsToday: 0);
         int tasteCode = -1;
         int stackBefore = giftItem?.Stack ?? 0;
         bool birthdayToday = false;
+        NPC? npc = null; // the villager on this map, once walked up to
 
         // Find them (they walk around, so look them up again after every trip or failed approach), go to them, talk.
-        for (int cycle = 0; cycle < 3 && !opened; cycle++)
+        for (int cycle = 0; cycle < 3 && !opened && !gaveUp; cycle++)
         {
-            npc = NpcInfo.ByName(name) ?? npc;
-            if (!NpcInfo.OnMap(npc, Loc))
+            spot = NpcInfo.Find(name) ?? spot;
+            if (!NpcInfo.OnMap(spot, Loc))
             {
-                if (npc.currentLocation == null) { failure = "they can't be found right now"; break; }
+                if (Game1.getLocationFromName(spot.Location) is not { } there) { failure = "they can't be found right now"; break; }
                 if (!go)
                 {
-                    c.Fail($"{npc.displayName} is not on this map ({Loc.Name}). {npc.displayName} is in {NpcInfo.WhereIs(npc)}. " +
-                           $"travel_to {npc.currentLocation.Name}, or call talk_to with go=true to be taken there.");
+                    c.Fail($"{spot.DisplayName} is not on this map ({Loc.Name}). {spot.DisplayName} is in {NpcInfo.WhereIs(spot)}. " +
+                           $"travel_to {there.Name}, or call talk_to with go=true to be taken there.");
                     yield break;
                 }
                 var trip = new CallContext();
-                yield return TravelTo(npc.currentLocation.Name, trip);
+                yield return TravelTo(there.Name, trip);
                 traveled = true;
-                npc = NpcInfo.ByName(name) ?? npc;
-                if (!NpcInfo.OnMap(npc, Loc))
+                spot = NpcInfo.Find(name) ?? spot;
+                if (!NpcInfo.OnMap(spot, Loc))
                 {
-                    if (!trip.Ok) { failure = $"couldn't reach {npc.displayName} in {NpcInfo.WhereIs(npc)}: {trip.Result}"; break; }
-                    failure = $"{npc.displayName} moved on to {NpcInfo.WhereIs(npc)}";
+                    if (!trip.Ok) { failure = $"couldn't reach {spot.DisplayName} in {NpcInfo.WhereIs(spot)}: {trip.Result}"; break; }
+                    failure = $"{spot.DisplayName} moved on to {NpcInfo.WhereIs(spot)}";
                     continue;
                 }
             }
-
-            for (int attempt = 0; attempt < 4 && !opened; attempt++)
+            if (NpcInfo.Here(name, Loc) == null)
             {
-                npc = NpcInfo.ByName(name) ?? npc;
-                if (!NpcInfo.OnMap(npc, Loc)) break; // they left this map: the outer loop follows them
+                // A farmhand reads other maps from the host's last look, up to half a second old: they have just left. Look again.
+                failure = $"{spot.DisplayName} has just left {Loc.Name}";
+                yield return Ticks(NpcInfo.TrackEvery + 1);
+                continue;
+            }
+
+            for (int attempt = 0; attempt < 3 && !opened; attempt++)
+            {
+                if (NpcInfo.Here(name, Loc) == null) break; // they left this map: the outer loop follows them
                 var walk = new CallContext();
-                yield return WalkAdjacent(npc.TilePoint, walk);
-                if (!walk.Ok) { failure = walk.Result.TrimEnd('.'); continue; }
-                var me = P.TilePoint;
-                if (Math.Abs(me.X - npc.TilePoint.X) + Math.Abs(me.Y - npc.TilePoint.Y) != 1) continue; // they moved
+                yield return ApproachNpc(name, walk);
+                if (!walk.Ok) { failure = walk.Result.TrimEnd('.'); gaveUp = true; break; } // out of reach, a menu, or no catching up
+                npc = NpcInfo.Here(name, Loc);
+                if (npc == null || !WalkMath.InReach(P.TilePoint, npc.TilePoint)) continue; // they left this map
                 Face(npc.TilePoint);
                 if (giftSlot >= 0) P.CurrentToolIndex = giftSlot;
                 else if (P.ActiveObject != null) P.CurrentToolIndex = FirstToolSlot();
@@ -519,7 +602,7 @@ public static partial class AgentTools
                 if (giftItem != null)
                 {
                     tasteCode = (int)npc.getGiftTasteForThisItem(giftItem);
-                    birthdayToday = NpcInfo.Of(P, npc).DaysToBirthday == 0;
+                    birthdayToday = NpcInfo.Of(P, spot).DaysToBirthday == 0;
                 }
                 bool handled = Game1.tryToCheckAt(npc.TilePoint.ToVector2(), P);
                 if (!handled && Game1.activeClickableMenu == null && !Game1.dialogueUp) FestivalAction(npc.TilePoint); // festival booths/actors
@@ -530,11 +613,11 @@ public static partial class AgentTools
 
         int spent = NpcMinutes() - startMinutes;
         var spentText = spent >= 10 ? $" Took {spent} game minutes (now {WorldText.FormatTime(Game1.timeOfDay)})." : "";
-        if (!opened)
+        if (!opened || npc == null)
         {
-            npc = NpcInfo.ByName(name) ?? npc;
-            var why = failure.Length > 0 ? failure : $"they may be busy, asleep or moving; {npc.displayName} is in {NpcInfo.WhereIs(npc)} now";
-            c.Fail($"Couldn't start a conversation with {npc.displayName} ({why}).{spentText}");
+            spot = NpcInfo.Find(name) ?? spot;
+            var why = failure.Length > 0 ? failure : $"they may be busy, asleep or moving; {spot.DisplayName} is in {NpcInfo.WhereIs(spot)} now";
+            c.Fail($"Couldn't start a conversation with {spot.DisplayName} ({why}).{spentText}");
             yield break;
         }
 
@@ -583,4 +666,78 @@ public static partial class AgentTools
         sb.Append(spentText);
         c.Result = sb.ToString();
     }
+
+    /// <summary>Ticks of running world talk_to spends walking up to a villager on one map (40 s, about an hour of game time).</summary>
+    private const int ApproachTicks = 60 * 40;
+    /// <summary>Ticks between two route plans; ticks a walking farmer may stand still before it plans again; ticks no tile
+    /// around the villager may be reached before talk_to gives up.</summary>
+    private const int ReplanTicks = 20, ApproachStuckTicks = 60, UnreachableTicks = 180;
+
+    /// <summary>
+    /// Walk up to a villager, who may be walking somewhere, and stop as soon as they are in reach: any tile around them,
+    /// diagonals too, as the action button reaches those. The route leads to the nearest free tile around them (never a warp)
+    /// and is planned again once they walk on, so a moving villager is caught up with instead of missed. Ends without failing
+    /// when they or the farmer leave the map (talk_to follows them); fails when a menu opens, when no tile around them can be
+    /// reached for a few seconds, or after <see cref="ApproachTicks"/>.
+    /// </summary>
+    private static IEnumerator ApproachNpc(string name, CallContext c)
+    {
+        yield return WaitIdle();
+        var loc = Loc;
+        Point? plannedFor = null;
+        int nextPlan = 0, unreachable = 0, still = 0;
+        var last = P.Position;
+        for (int t = 0; t < ApproachTicks; t++)
+        {
+            // Stepped onto a warp on the way: stop pushing into it, or the game restarts the fade every tick (as in WalkTo).
+            if (Game1.isWarping) { P.controller = null; yield break; }
+            if (Game1.activeClickableMenu != null)
+            {
+                StopWalk();
+                c.Fail(Reasons.MenuOpen, "A menu or dialogue opened on the way: deal with it (respond or close_menu), then call talk_to again.");
+                yield break;
+            }
+            var npc = Loc == loc ? NpcInfo.Here(name, loc) : null;
+            if (npc == null) { StopWalk(); yield break; }
+            var me = P.TilePoint;
+            var at = npc.TilePoint;
+            if (WalkMath.InReach(me, at)) { StopWalk(); yield break; }
+
+            bool walking = P.controller is WalkController;
+            still = walking && Vector2.DistanceSquared(P.Position, last) < 0.01f ? still + 1 : 0;
+            last = P.Position;
+            bool replan = !walking || still > ApproachStuckTicks || plannedFor is not { } aim || WalkMath.Steps(aim, at) >= 2;
+            if (replan && t >= nextPlan)
+            {
+                nextPlan = t + ReplanTicks;
+                var route = new Pathfinder().FindPathToAny(loc, me.ToVector2(), WalkMath.Around(at).Where(q => !FarmerOn(loc, q) && !WarpOn(loc, q)));
+                if (route == null)
+                {
+                    // Nothing around them can be reached right now; they may step out of a corner in a moment.
+                    StopWalk();
+                    plannedFor = null;
+                    if ((unreachable += ReplanTicks) >= UnreachableTicks)
+                    {
+                        c.Fail(Reasons.NoPath, $"No free tile next to {npc.displayName} at ({at.X},{at.Y}) can be reached from here: " +
+                                               "they may be behind a counter, a locked door or furniture.");
+                        yield break;
+                    }
+                }
+                else
+                {
+                    unreachable = still = 0;
+                    plannedFor = at;
+                    StartWalk(loc, route);
+                }
+            }
+            yield return null;
+        }
+        StopWalk();
+        var spot = NpcInfo.Find(name);
+        c.Fail(Reasons.NoPath, $"Couldn't catch up with {spot?.DisplayName ?? name}; they are in {(spot == null ? "an unknown place" : NpcInfo.WhereIs(spot))} now.");
+    }
+
+    /// <summary>A warp a farmer would take on this tile: standing there to talk would carry it off the map.</summary>
+    private static bool WarpOn(GameLocation loc, Point tile) =>
+        loc.warps.Any(w => w.X == tile.X && w.Y == tile.Y && !w.npcOnly.Value);
 }

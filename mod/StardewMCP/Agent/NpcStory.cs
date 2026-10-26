@@ -271,7 +271,7 @@ public static class NpcStory
     {
         var book = NpcKnowledge.Book(who);
         var villagers = NpcInfo.Social()
-            .OrderBy(n => n.displayName, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
             .Select(n =>
             {
                 var v = NpcInfo.Of(who, n);

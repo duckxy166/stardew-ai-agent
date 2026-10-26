@@ -50,6 +50,8 @@ mod/StardewMCP/
     MenuTools.cs       menu: reads any open menu and clicks it through per-menu adapters
     SocialTools.cs     say (heard only by screens that show the speaker) / emote / give; per-seat inbox appended to the next tool result
     Perception.cs      Players in view with what they actually do vs. what they claimed; per-seat interrupt events
+    Sightings.cs       Forage, dig spots, berry bushes and dropped items passed on a walk; the walk's result lists them (SightLog)
+    WalkController.cs  PathFindController without the per-tile stop; skips the game's input step while it walks (smooth stride)
     CommunityTools.cs  bundles / donate_bundle / museum; BundleReader and LateBound shared with Joja
     JojaTools.cs       joja: membership (confirm guard) / projects / buy_project
     WorldText.cs       Text renderings of status / surroundings / inventory for the model
@@ -142,6 +144,8 @@ mod/StardewMCP/Agent/BobberController.cs BobberMath, CastMath for fish (Python t
 mod/StardewMCP/Agent/WorldText.Format.cs  FormatTime, DirName, part of WorldText
 mod/StardewMCP/Agent/BubbleText.cs   Line breaking for the speech bubbles (Thai-aware)
 mod/StardewMCP/Agent/SpeechQueue.cs  say lines shown one at a time per place, timed only while the world runs
+mod/StardewMCP/Agent/WalkMath.cs     OnTile (the game's "reached this tile" rule), InReach (the action button's reach), Around
+mod/StardewMCP/Agent/SightLog.cs     Sight, SightLog: the "Seen on the way" line of walk_to / travel_to / talk_to
 mod/StardewMCP/Agent/Brain/Llm.cs, *Provider.cs, Prompts.cs   Built-in AI wire formats and prompt texts
 ```
 

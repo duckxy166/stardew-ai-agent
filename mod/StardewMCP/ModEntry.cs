@@ -55,6 +55,7 @@ public class ModEntry : Mod
             SplitScreen.OnReturnedToTitle();
             PassOut.OnReturnedToTitle();
             WorldProgress.Reset();
+            NpcInfo.Reset();
         };
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         helper.Events.GameLoop.DayStarted += (_, _) =>
@@ -91,6 +92,7 @@ public class ModEntry : Mod
         Game1.options.pauseWhenOutOfFocus = false;
         if (Context.ScreenId != 0)
             return;
+        NpcInfo.Reset();
         // Seat roles and split-screen may have changed in the config menu; farmhands join on later host ticks.
         Players.Resolve(_config, Monitor);
         SaveFolder.OnSaveLoaded();
@@ -134,6 +136,8 @@ public class ModEntry : Mod
                 Bedtime.Tick(_config);
             if (e.IsMultipleOf(15))
                 _http.RefreshState();
+            if (e.IsMultipleOf(NpcInfo.TrackEvery))
+                NpcInfo.TrackHost(); // farmhand screens find villagers through the host's world
         }
     }
 

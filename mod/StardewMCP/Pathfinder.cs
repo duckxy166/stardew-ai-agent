@@ -23,6 +23,10 @@ public partial class Pathfinder
     public List<Vector2>? FindPath(GameLocation location, Vector2 start, Vector2 goal) =>
         FindPath(new LocationGrid(location), start, goal);
 
+    /// <summary>Route to the nearest of <paramref name="goals"/> by walking (see <see cref="FindPathToAny(IWalkableGrid, Vector2, IEnumerable{Point})"/>).</summary>
+    public List<Vector2>? FindPathToAny(GameLocation location, Vector2 start, IEnumerable<Point> goals) =>
+        FindPathToAny(new LocationGrid(location), start, goals);
+
     /// <summary>
     /// Whether the farmer could stand on this tile right now: inside the map and not colliding
     /// with anything the game would stop the player on (walls, water, objects, crops with

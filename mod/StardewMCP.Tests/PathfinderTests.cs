@@ -159,4 +159,75 @@ public class PathfinderTests
             }
         }
     }
+
+    // ------------------------------------------------------------------ FindPathToAny (the tiles around a villager)
+
+    private static List<Vector2>? RouteToAny(TextGrid map, Vector2 start, params (int X, int Y)[] goals) =>
+        new Pathfinder().FindPathToAny(map, start, goals.Select(g => new Point(g.X, g.Y)));
+
+    [Fact]
+    public void Any_goal_route_ends_on_the_goal_that_is_the_shortest_walk_away()
+    {
+        // (4,0) is closer as the crow flies, but the wall makes (0,3) the shorter walk.
+        var map = new TextGrid(
+            "S.#..",
+            "..#..",
+            "..#..",
+            ".....");
+        var route = RouteToAny(map, map.Find('S'), (4, 0), (0, 3));
+        Assert.NotNull(route);
+        AssertValidRoute(map, map.Find('S'), new Vector2(0, 3), route!);
+        Assert.Equal(3, route!.Count);
+    }
+
+    [Fact]
+    public void Any_goal_route_is_empty_when_already_on_one_of_the_goals()
+    {
+        var map = new TextGrid("S..");
+        var route = RouteToAny(map, map.Find('S'), (2, 0), (0, 0));
+        Assert.NotNull(route);
+        Assert.Empty(route!);
+    }
+
+    [Fact]
+    public void Any_goal_route_skips_blocked_goals_and_is_null_when_none_is_left()
+    {
+        var map = new TextGrid(
+            "S.#",
+            "..#",
+            "###");
+        Assert.Null(RouteToAny(map, map.Find('S'), (2, 0), (2, 2), (9, 9)));
+        var route = RouteToAny(map, map.Find('S'), (2, 0), (1, 1));
+        Assert.NotNull(route);
+        Assert.Equal(2, route!.Count);
+    }
+
+    [Fact]
+    public void Any_goal_routes_match_the_best_single_goal_route_on_random_maps()
+    {
+        var random = new Random(20261026);
+        for (int round = 0; round < 200; round++)
+        {
+            const int size = 12;
+            var rows = new string[size];
+            for (int y = 0; y < size; y++)
+                rows[y] = new string(Enumerable.Range(0, size).Select(_ => random.NextDouble() < 0.3 ? '#' : '.').ToArray());
+            var map = new TextGrid(rows);
+            var start = new Vector2(random.Next(size), random.Next(size));
+            var goals = Enumerable.Range(0, 3).Select(_ => (X: random.Next(size), Y: random.Next(size))).ToArray();
+
+            var route = RouteToAny(map, start, goals);
+            var best = goals.Select(g => map.ShortestSteps((int)start.X, (int)start.Y, g.X, g.Y)).Where(n => n != null).Min();
+
+            if (best == null)
+                Assert.Null(route);
+            else
+            {
+                Assert.NotNull(route);
+                Assert.Equal(best.Value, route!.Count);
+                if (route.Count > 0)
+                    Assert.Contains(((int)route[^1].X, (int)route[^1].Y), goals);
+            }
+        }
+    }
 }

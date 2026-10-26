@@ -11,7 +11,6 @@ using StardewValley;
 using StardewValley.Buildings;
 using StardewValley.Locations;
 using StardewValley.Menus;
-using StardewValley.Pathfinding;
 using StardewValley.TerrainFeatures;
 using StardewValley.Tools;
 using SObject = StardewValley.Object;
@@ -115,7 +114,8 @@ public static partial class AgentTools
             new()
             {
                 Name = "walk_to",
-                Description = "Walk to a tile on the current map (pathfinding is automatic). If the tile is blocked or someone stands on it you stop next to it. Time passes while walking.",
+                Description = "Walk to a tile on the current map (pathfinding is automatic). If the tile is blocked or someone stands on it you stop next to it. Time passes while walking. " +
+                              "The result also lists forage, spots to dig and other finds you passed on the way.",
                 Schema = Obj(new { x = Int("Tile x"), y = Int("Tile y"), reason = Str(ReasonDesc) }, "x", "y", "reason"),
                 Run = WalkToTool
             },
@@ -197,7 +197,8 @@ public static partial class AgentTools
                               "You can also name a shop keeper (Pierre, Clint, Robin, Marnie, Willy, Gus: their shop) or any villager (the map they are in now). " +
                               "Late game: Desert and Calico Desert (500g bus from the Bus Stop, after the Vault bundle or Joja Bus), Skull Cavern (the Skull Key opens the desert door), " +
                               "Ginger Island (1,000g boat from Willy's back room, after the boat is repaired), Casino, MovieTheater and Oasis. " +
-                              "Locked doors stay locked outside opening hours; the failure says when they open.",
+                              "Locked doors stay locked outside opening hours; the failure says when they open. " +
+                              "The result also lists forage, spots to dig and other finds you passed on the way.",
                 Schema = Obj(new { location = Str("Destination map name, shop keeper or villager"), reason = Str(ReasonDesc) }, "location", "reason"),
                 Run = TravelTo
             },
@@ -382,25 +383,14 @@ public static partial class AgentTools
             c.Fail(Reasons.NoPath, $"No walkable path to ({target.X},{target.Y}) on {loc.Name}.");
             yield break;
         }
-
-        foreach (var step in path)
-        {
-            int sx = (int)step.X, sy = (int)step.Y;
-            if (Pathfinder.CanPassDoor(loc, sx, sy, P))
-                loc.openDoor(new xTile.Dimensions.Location(sx, sy), true);
-        }
-
-        var stack = new Stack<Point>();
-        for (int i = path.Count - 1; i >= 0; i--) stack.Push(new Point((int)path[i].X, (int)path[i].Y));
-        P.controller = new PathFindController(stack, P, loc) { NPCSchedule = false };
-        P.setRunning(true, true);
+        StartWalk(loc, path);
 
         int limit = 60 * 5 + path.Count * 40;
         int stuck = 0;
         var last = P.Position;
         for (int t = 0; t < limit; t++)
         {
-            if (Game1.currentLocation != loc) yield break; // walked through a warp
+            if (Game1.currentLocation != loc) { P.controller = null; yield break; } // walked through a warp
             // Stepped onto a warp: stop pushing into it, or the game re-warps (restarting the fade) every tick.
             if (Game1.isWarping) { P.controller = null; yield break; }
             if (P.controller == null) break;
@@ -413,9 +403,7 @@ public static partial class AgentTools
                 P.Halt();
                 var re = new Pathfinder().FindPath(loc, P.TilePoint.ToVector2(), target.ToVector2());
                 if (re == null) break;
-                var s2 = new Stack<Point>();
-                for (int i = re.Count - 1; i >= 0; i--) s2.Push(new Point((int)re[i].X, (int)re[i].Y));
-                P.controller = new PathFindController(s2, P, loc) { NPCSchedule = false };
+                StartWalk(loc, re);
                 stuck = -200;
             }
             yield return null;
@@ -424,6 +412,33 @@ public static partial class AgentTools
         P.Halt();
         if (P.TilePoint != target && Game1.currentLocation == loc)
             c.Fail(Reasons.NoPath, $"Could not reach ({target.X},{target.Y}); stopped at ({P.TilePoint.X},{P.TilePoint.Y}).");
+    }
+
+    /// <summary>
+    /// Run along <paramref name="route"/> (the tiles to step on, in order) with a <see cref="WalkController"/>, opening the
+    /// doors on it that this farmer may pass. An empty route starts nothing.
+    /// </summary>
+    internal static void StartWalk(GameLocation loc, IReadOnlyList<Vector2> route)
+    {
+        if (route.Count == 0) return;
+        foreach (var step in route)
+        {
+            int sx = (int)step.X, sy = (int)step.Y;
+            if (Pathfinder.CanPassDoor(loc, sx, sy, P))
+                loc.openDoor(new xTile.Dimensions.Location(sx, sy), true);
+        }
+        var stack = new Stack<Point>();
+        for (int i = route.Count - 1; i >= 0; i--) stack.Push(new Point((int)route[i].X, (int)route[i].Y));
+        P.controller = new WalkController(stack, P, loc);
+        P.setRunning(true, true);
+    }
+
+    /// <summary>End a walk where the farmer stands.</summary>
+    internal static void StopWalk()
+    {
+        if (P.controller == null) return;
+        P.controller = null;
+        P.Halt();
     }
 
     /// <summary>Another farmer stands on this tile: farmers don't collide in the game, so walking there stacks them.</summary>
@@ -702,9 +717,14 @@ public static partial class AgentTools
     /// <summary>True while interact presses the action button; see <see cref="JustRightClick_Prefix"/>.</summary>
     private static bool _pressingAction;
 
-    public static void Apply(IManifest manifest) =>
-        new Harmony(manifest.UniqueID + ".input").Patch(AccessTools.Method(typeof(Game1), nameof(Game1.didPlayerJustRightClick)),
+    public static void Apply(IManifest manifest)
+    {
+        var harmony = new Harmony(manifest.UniqueID + ".input");
+        harmony.Patch(AccessTools.Method(typeof(Game1), nameof(Game1.didPlayerJustRightClick)),
             prefix: new HarmonyMethod(typeof(AgentTools), nameof(JustRightClick_Prefix)));
+        harmony.Patch(AccessTools.Method(typeof(Game1), "UpdateControlInput"),
+            prefix: new HarmonyMethod(typeof(WalkController), nameof(WalkController.ControlInput_Prefix)));
+    }
 
     /// <summary>Player chests, the shipping bin, fish ponds, bushes and furniture only answer a fresh action-button press.</summary>
     private static bool JustRightClick_Prefix(ref bool __result)

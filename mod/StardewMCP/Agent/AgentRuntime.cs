@@ -59,6 +59,9 @@ public class AgentRuntime
     /// <summary>Stuck/loop detector for this seat's calls: repeated failures, no progress. Hints per day: <c>Guard.HintsToday</c>. See LoopGuard.cs.</summary>
     public LoopGuard Guard { get; }
 
+    /// <summary>What the farmer walked past during the running action (forage, spots to dig...). See <see cref="Sightings"/>.</summary>
+    public SightLog Sights { get; } = new();
+
     /// <summary>True while an action that lets game time pass is running (or a heart event plays by itself).</summary>
     public bool ActionRunning => _actionLane.Current is { Instant: false } || Story.Playing;
     public string? CurrentTool => _actionLane.Current?.Tool.Name;
@@ -142,6 +145,7 @@ public class AgentRuntime
         Romance.Tick(this);
         Stats.Tick();
         NightEvents.Tick(this);
+        Sightings.Tick(this);
         _actionLane.Tick(_actions);
         _observeLane.Tick(_observations);
     }
@@ -241,6 +245,7 @@ public class AgentRuntime
             _watch = Stopwatch.StartNew();
             _stack.Clear();
             _rt.Stats.OnCallStart(call.Tool.Name, call.Instant);
+            if (!call.Instant) _rt.Sights.Clear(); // a new action has seen nothing yet, even one refused below
 
             if (SessionBreaks.Refuse(_rt.Log, call, out var breakMessage)) // after a planned session break, no more actions (#30)
             {
@@ -367,6 +372,14 @@ public class AgentRuntime
             // Loop guard: "you tried this 3 times", "you haven't done anything for a while".
             var hint = _rt.Guard.End(call, ctx.Ok, ctx.Result);
             if (hint.Length > 0) text = text.TrimEnd() + "\n" + hint;
+
+            // Forage and other finds the farmer walked past, also when the walk was interrupted (in the log too)
+            var seen = Context.IsWorldReady ? Sightings.Line(_rt, call) : "";
+            if (seen.Length > 0)
+            {
+                ctx.Result = ctx.Result.TrimEnd() + "\n" + seen;
+                text = text.TrimEnd() + "\n" + seen;
+            }
 
             // a call answered early (Perception.ReplyInTime) leaves what was heard meanwhile for the next result
             var mail = call.Tool.Mail && !call.Done.Task.IsCompleted ? Perception.TakeMail(_rt.Log.Player) : "";

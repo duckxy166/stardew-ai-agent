@@ -54,7 +54,8 @@ makes every choice.
 ## 💬 Villagers, romance and festivals
 
 - Know everyone: where they are, hearts, birthdays, the gift tastes found out so far (`villagers`)
-- Find a villager anywhere in the valley, talk and give gifts (`talk_to`)
+- Find a villager anywhere in the valley, talk and give gifts, even to someone walking down the street (`talk_to`); P2 and P3 find
+  villagers on maps nobody stands on too
 - Date with a bouquet, propose with the Mermaid Pendant, marry (`bouquet`, `mermaid_pendant`)
 - Heart events with their questions answered by the AI (opt-in: `PlayHeartEvents`)
 - Festival calendar, shop hours, joining and leaving festivals (`calendar`, `festival`)
@@ -72,6 +73,8 @@ makes every choice.
 - Wait, rest in bed to recover, go to bed (`wait`, `rest`, `go_to_bed`)
 - Mail and letters, with quests and attachments claimed (`interact`, `close_menu`)
 - Profession choices at skill levels 5 and 10 (`choose_profession`)
+- Forage, spots to dig, berry bushes and dropped items passed on the way are listed after every walk, so the AI can go
+  back for them (`walk_to`, `travel_to`, `talk_to`)
 - Night events (fairy, witch, meteorite...) reported the next morning
 - Passing out at 2:00 AM or at 0 health is recorded, and the missed diary is caught up the next day
 
@@ -97,6 +100,7 @@ makes every choice.
 - `/overlay` for OBS (live thoughts and actions, one seat or all) and `/replay` (day by day)
 - JSONL logs, diaries, daily stats and failure summaries for every day
 - Frozen frames that look live, speech bubbles timed to the running world, Thai and English UI
+- Every farmer walks with a smooth running stride on its own screen too, not in stop-and-go taps
 
 ## ⏱️ Time and control
 

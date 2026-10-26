@@ -13,7 +13,7 @@ Every system behind that handler is then covered without new code.
 
 | Input | Human | AI tool | Game entry point | Status |
 |---|---|---|---|---|
-| Move | WASD | `walk_to`, `travel_to` | pathfinder, warps, doors | ✅ `travel_to` also takes shop owners and villagers (#9) |
+| Move | WASD | `walk_to`, `travel_to` | pathfinder, warps, doors; `WalkController` (a `PathFindController` that does not stop a tick on each tile) and no `Game1.UpdateControlInput` on that screen while it walks, so the game's input step does not halt the farmer every tick | ✅ `travel_to` also takes shop owners and villagers (#9); 🟡 the smooth stride is not yet checked in game |
 | Action button | right-click | `interact(x, y, holding?)` | `Game1.pressActionButton`: the held item's use action or eating, else `tryToCheckAt` → `GameLocation.checkAction` | ✅ `holding` picks the item; handlers that wait for a fresh press (`didPlayerJustRightClick`: chests, shipping bin, fish ponds) see it |
 | Use button | left-click | `use_tool`, `plant`, `place` | `Farmer.BeginUsingTool`, `Utility.tryToPlaceItem` | 🟡 `place` puts items on free ground (smoke `place`, not yet run in game); `plant` only on tilled soil |
 | Dialogue answer | click an option | `respond(option)` | `DialogueBox` → `answerDialogueAction` or the question's callback | ✅ |
@@ -64,7 +64,7 @@ Rules:
 |---|---|---|---|---|
 | Clear, till, water, chop, mine | tool on a tile | `use_tool`; `clear_area`, `till_area` for rectangles | ✅ single tiles; 🟡 `clear_area`/`till_area` untested (smoke `farm_batch`) | #15 |
 | Plant seeds, fertilizer | item on soil | `plant` (tiles, or `area`/whole map) | ✅ tiles; 🟡 area mode untested (smoke `farm_batch`) | #15 |
-| Harvest crops, forage | action on a tile | `harvest`; `harvest_all` for the whole map | ✅ tiles; 🟡 `harvest_all` untested | #15 |
+| Harvest crops, forage | action on a tile | `harvest`; `harvest_all` for the whole map; `walk_to`, `travel_to` and `talk_to` list the forage, artifact and seed spots, berry bushes and dropped items passed within 6 tiles of the route (`Sightings`) | ✅ tiles; 🟡 `harvest_all` and the on-the-way list untested in game | #15 |
 | Whole-farm routine | look at every plot, water, collect | `farm_summary`, `water_all` (`whose: mine` keeps to your own crops; the result says whose were watered), `harvest_all` | 🟡 untested (smoke `farm_batch` covers summary and water; refill and rain need manual play) | #15 |
 | Place machines, chests, sprinklers, fences, furniture | use button with the item | `place` | 🟡 smoke `place`, `craft_place_chest` written, not yet run in game | #3 |
 | Load a machine | action while holding the input | `interact(holding)` | ✅ smoke `furnace` | #3 |
@@ -104,8 +104,8 @@ Rules:
 
 | System | How a human does it | Covered by | Status | Issue |
 |---|---|---|---|---|
-| Know the villagers | social page | `villagers` (location, hearts, counters, birthdays, tastes found out) | 🟡 untested in game | #9 |
-| Talk | action on an NPC | `talk_to` (finds the villager, travels across maps, reports points before/after) | 🟡 untested in game | #9 |
+| Know the villagers | social page | `villagers` (location, hearts, counters, birthdays, tastes found out); farmhand screens read where everyone is from the host's world (`NpcInfo.TrackHost`), since a farmhand only keeps the maps a farmer stands on up to date | 🟡 untested in game | #9 |
+| Talk | action on an NPC | `talk_to` (finds the villager, travels across maps, follows a villager who walks on and talks from any of the 8 tiles around them, as `tryToCheckAt` allows; reports points before/after) | 🟡 untested in game | #9 |
 | Gifts | action holding the gift | `talk_to(gift_item)`: reaction and taste are learned; `interact(holding)` gifts are not recorded | 🟡 untested in game | #9 |
 | Heart events | cutscenes with questions | `PlayHeartEvents` (off): story events play, stop at questions for `respond`; other events are skipped | 🟡 opt-in, untested; in split-screen the event only moves while no other AI is thinking | #9 |
 | Dating, marriage | give a bouquet (8 hearts), later a Mermaid Pendant (10 hearts, upgraded house) | `bouquet`, `mermaid_pendant` (the game's gift path through `talk_to`; requirements shown in `villagers`); the wedding is the game's own, watched and logged | 🟡 untested in game | #53 |

@@ -24,8 +24,8 @@ Every tool the AI can call, grouped by job. Each farmer's MCP endpoint (`/mcp`, 
 
 | Tool | Arguments | What it does |
 |---|---|---|
-| `walk_to` | `x`, `y` | Pathfind to a tile on the current map |
-| `travel_to` | `location` | Go to another map. A shop owner's or villager's name also works; a closed door says when it opens |
+| `walk_to` | `x`, `y` | Pathfind to a tile on the current map. The result lists the forage, spots to dig, berry bushes and dropped items passed on the way that are still there |
+| `travel_to` | `location` | Go to another map. A shop owner's or villager's name also works; a closed door says when it opens. Lists what was seen on the way, like `walk_to` |
 | `mount`, `dismount` | | Ride the horse (needs a Stable) and get off |
 
 ## Farm
@@ -97,7 +97,7 @@ Buildings and animals are paid from the caller's own money and items.
 
 | Tool | Arguments | What it does |
 |---|---|---|
-| `talk_to` | `name`, *`gift_item`*, *`go`* | Find a villager (travels across maps unless `go=false`), talk, optionally give a gift; reports friendship points before and after and their reaction |
+| `talk_to` | `name`, *`gift_item`*, *`go`* | Find a villager (travels across maps unless `go=false`), talk, optionally give a gift; reports friendship points before and after and their reaction. A villager who is walking is followed and talked to from any tile next to them, corners included |
 | `bouquet` | `name`, *`go`* | Ask a villager to date you (8 hearts) |
 | `mermaid_pendant` | `name`, *`go`* | Propose to a villager (10 hearts, upgraded house) |
 | `festival` | `action`, *`to`*, *`max`* | On a festival day: `start` talks to Lewis and begins the main event (waits for the other players), `leave` walks out, `eggs` picks up eggs during the Egg Festival's egg hunt (nearest first, until the hunt ends or `max` are picked; `look` shows the eggs as `E`) |
