@@ -4,11 +4,10 @@
 
 # 🌾 Stardew MCP
 
-**Let AI play Stardew Valley: on its own, next to you, or with two other AIs on the same farm.**
+**A mod that lets AI play Stardew Valley by itself.**
 
-A [SMAPI](https://smapi.io) mod that runs an [MCP](https://modelcontextprotocol.io) server *inside the game*.
-Claude, GPT, Gemini or a local model walks, farms, fishes, chats with villagers, makes deals with the
-other farmers and goes to bed, all by itself.
+Let an AI play alone, play alongside you, or put three AIs on the same farm.
+Works with Claude, GPT, Gemini or a model running on your own machine.
 
 [![Latest release](https://img.shields.io/github/v/release/duckxy166/stardew-ai-agent?style=flat-square&label=release&color=4caf50)](https://github.com/duckxy166/stardew-ai-agent/releases/latest)
 [![GitHub stars](https://img.shields.io/github/stars/duckxy166/stardew-ai-agent?style=flat-square&color=f5c518)](https://github.com/duckxy166/stardew-ai-agent/stargazers)
@@ -21,94 +20,136 @@ other farmers and goes to bed, all by itself.
   <img src="docs/assets/ep01-cover.png" width="720" alt="Watch on YouTube: Claude, GPT and Gemini share one farm in Stardew Valley">
 </a>
 
-▶️ **[Watch EP.1 on YouTube](https://youtu.be/Drd5lWh3kFI)**: Claude, GPT and Gemini farm together for five days
-and end up harvesting each other's crops (43 min, in Thai)
+▶️ **[Watch EP.1 on YouTube](https://youtu.be/Drd5lWh3kFI)** (43 min, in Thai)
+Claude, GPT and Gemini farm together for five days and end up harvesting each other's crops.
 
 </div>
+
+## What this mod is
+
+Stardew MCP lets an AI control a farmer in the game. The AI walks, farms, fishes, chats with villagers, makes deals
+with the other farmers and goes to bed, all without you pressing a key.
+
+How it works, in short:
+
+1. The mod tells the AI what its farmer can see: where it is, what it carries, which crops still need water.
+2. The AI decides what to do next and picks a tool, such as `water_all` (water every crop), `walk_to` (walk to a
+   tile) or `say` (talk).
+3. The mod carries it out in the game and sends the result back, and the AI decides again. This repeats until the
+   day ends.
+
+Words you will meet on this page:
+
+- **SMAPI**: the mod loader for Stardew Valley. You need it before you can use this mod.
+- **MCP** (Model Context Protocol): a standard that lets AI apps such as Claude Code or Cursor call outside tools.
+  This mod runs an MCP server *inside the game*, so outside AIs can connect and play.
+- **Seat**: one player screen, P1 to P4. Each seat can be played by an AI, by you, or switched off.
+- **Brain**: the AI provider that drives a seat, such as `anthropic`, `openai` or `gemini`.
 
 ## What happened in the video
 
 Three AIs moved onto one farm as strangers. Nobody gave them roles, teams or goals. Each one sees only its own
-screen, hears only who is standing near it, and keeps its own diary. Over five in-game days:
+screen, hears only who is standing near it, and writes its own diary every night.
+
+Over five in-game days:
 
 - 👋 Gemini greeted the whole town on day 1, without anyone asking it to.
 - 🪙 Claude spent its money down to 0g for three last seeds.
 - 💭 GPT's private thoughts slipped into another language mid-sentence.
 - 🚪 Two days in a row they queued outside a shop before it opened.
-- 🥕 On day 5 every parsnip was ripe at once. *"So we don't pick the same ones"*, one said, and then they picked each
-  other's: **Claude took 14 of the others' crops, GPT 11, Gemini 0.**
+- 🥕 On day 5 every parsnip was ripe at once. *"So we don't pick the same ones"*, one said, and then they all picked
+  each other's. The result: **Claude took 14 of the others' crops, GPT 11, Gemini 0.**
 - 🌱 When they finally split up the field, one of them was left without a plot.
 
-None of it was scripted. The mod logs every action, thought and line of chat, and the story is in the logs.
+None of it was scripted. The mod logs every action, thought and line of chat, and the story in the video comes from
+those logs.
 
 ## Highlights
 
-- 🤖 **Plays most of the game by itself.** 70 tools for farming, fishing, mining and combat, cooking, crafting,
-  shopping, animals, buildings, festivals, quests, the Community Center, the museum, friendship and marriage.
+- 🤖 **Plays most of the game.** 70 tools for farming, fishing, mining, combat, cooking, crafting, shopping,
+  animals, buildings, festivals, quests, the Community Center, the museum, friendship and marriage.
   → [Everything it can do](docs/features.md)
-- 👥 **Up to three AIs on one farm** in split-screen co-op, with or without you. Separate wallets, their own crops and
+- 👥 **Up to three AIs on one farm** in split-screen co-op, with or without you. Each has its own money, crops and
   chests, and the mod notices when someone takes what isn't theirs.
-- 🗣️ **They only hear what is near them.** `say` reaches the farmers whose screen shows the speaker, and `think` is
-  private (viewers see it). Plans, deals and lies happen face to face, and a lie can be caught, because every AI sees
-  what the others are *actually* doing next to what they said.
-- ⏸️ **Time freezes while an AI thinks**, so a slow model loses no game time. Turn it off when you play along.
-- 🧠 **Memory across days**: a diary, lessons, a plan, and a `self` note each AI rewrites every evening. Characters come
-  out of what happens to them, not out of a script.
-- 🎥 **Made for streams and videos**: an overlay page for OBS, a day-by-day replay, JSONL logs, diaries and daily stats.
-- 🔌 **Use any AI**: the built-in loop with your own API key (Anthropic, OpenAI, Gemini, OpenRouter, Ollama,
-  LM Studio), any MCP client (Claude Code, Claude Desktop, Cursor...), or plain HTTP.
+- 🗣️ **They only hear what is near them.** A `say` reaches only the farmers whose screen shows the speaker. A
+  `think` is heard by no farmer; only viewers see it. Plans, deals and lies have to happen face to face, and a lie
+  can be caught, because every AI sees what the others are *actually* doing.
+- ⏸️ **Game time stops while an AI thinks**, so a slow model loses no game time. Turn it off when you play along.
+- 🧠 **Memory across days.** Every evening each AI writes a diary, lessons, a plan and a note on who it is. Their
+  characters grow out of what happens to them in the game, not out of a script.
+- 🎥 **Ready for streams and videos.** An overlay page for OBS, a day-by-day replay page, logs, diaries and daily
+  stats.
+- 🔌 **Use any AI.** Give the mod's built-in AI your own API key (Anthropic, OpenAI, Gemini, OpenRouter, Ollama,
+  LM Studio), connect an MCP app (Claude Code, Claude Desktop, Cursor...), or call it over plain HTTP.
 
-## Three ways to use it
+## Choose how to use it
+
+There are three ways. If you're not sure, start with the first: it needs no other programs.
 
 | You want to... | Use | You need |
 |---|---|---|
-| Watch AIs play your farm, or play alongside them | The mod's **built-in AI**: set it up in the config menu, no other programs | An API key (Anthropic, OpenAI, Gemini) or a local model (Ollama, LM Studio) |
-| Give orders to your own AI assistant ("water the crops, then visit Abigail") | Any **MCP client** (Claude Code, Claude Desktop, Cursor...) connected to `http://localhost:8770/mcp` | That client |
-| Build your own bot, stream overlay or automation | The **[HTTP API](docs/api.md)** (`/api/state`, `/api/control`, `/overlay`, `/replay`...) | Any language that speaks HTTP |
+| Watch AIs play your farm, or play alongside them | The mod's **built-in AI**, set up in the game's menu or in `config.json` | An API key (Anthropic, OpenAI, Gemini) or a local model (Ollama, LM Studio) |
+| Give orders to your own AI, e.g. "water the crops, then visit Abigail" | Any **MCP app** (Claude Code, Claude Desktop, Cursor...) connected to `http://localhost:8770/mcp` | That app |
+| Build your own bot, stream overlay or automation | The **[HTTP API](docs/api.md)** (`/api/state`, `/api/control`, `/overlay`, `/replay`...) | Any programming language that speaks HTTP |
 
 ## Install
 
-You need Stardew Valley 1.6+ (PC) and [SMAPI](https://smapi.io) 4.0+.
-[Generic Mod Config Menu](https://www.nexusmods.com/stardewvalley/mods/5098) is optional and lets you change the
-settings in the game.
+You need:
+
+- Stardew Valley 1.6 or newer (PC)
+- [SMAPI](https://smapi.io) 4.0 or newer
+- (optional) [Generic Mod Config Menu](https://www.nexusmods.com/stardewvalley/mods/5098), to change the mod's
+  settings in the game instead of editing a file
+
+Steps:
 
 1. Install SMAPI and start the game through it once.
 2. Download the latest `StardewMCP` zip from the [Releases](https://github.com/duckxy166/stardew-ai-agent/releases) page.
-3. Unzip it into `Stardew Valley/Mods/`, so you get `Mods/StardewMCP/`.
-4. Start the game through SMAPI. The SMAPI console should show `Agent MCP at http://localhost:8770/mcp`.
+3. Unzip it into `Stardew Valley/Mods/`, so you get `Mods/StardewMCP/` (not a folder nested twice).
+4. Start the game through SMAPI. If the install worked, the SMAPI console shows
+   `Agent MCP at http://localhost:8770/mcp`.
 
-The first start creates `Mods/StardewMCP/config.json`. With Generic Mod Config Menu you can also change the settings
-in the game: title screen → the cog → *Stardew MCP*.
+On the first start the mod creates its settings file, `Mods/StardewMCP/config.json`.
+With Generic Mod Config Menu you can change the settings in the game: title screen → the cog → *Stardew MCP*.
 
 ## Quick start
 
 ### Let the AI play by itself
 
-1. Open the mod's settings (in the game, or in `config.json`).
-2. Give seat **P1** a provider (`Brain`), a model and your API key:
+1. Open the mod's settings (in the game, or edit `config.json`).
+2. On seat **P1**, set the AI provider (`Brain`) and your API key. Leave the model (`Model`) empty to use the
+   default.
 
-   | `Brain` | Models | Key / endpoint |
+   | `Brain` | Models | Get a key / endpoint |
    |---|---|---|
    | `anthropic` | `claude-haiku-5-5` (default), `claude-sonnet-5-5`, ... | [console.anthropic.com](https://console.anthropic.com) |
-   | `openai` | `gpt-5-mini` (default), `gpt-5`, ... | [platform.openai.com](https://platform.openai.com), or any OpenAI-compatible server with a `BaseUrl`: OpenRouter (`https://openrouter.ai/api/v1`), Ollama (`http://localhost:11434/v1`, no key), LM Studio |
+   | `openai` | `gpt-5-mini` (default), `gpt-5`, ... | [platform.openai.com](https://platform.openai.com), or any other server with the OpenAI format through a `BaseUrl`, such as OpenRouter (`https://openrouter.ai/api/v1`), Ollama (`http://localhost:11434/v1`, no key needed), LM Studio |
    | `gemini` | `gemini-3.8-flash` (default), ... | [aistudio.google.com](https://aistudio.google.com) |
-   | `none` | | no built-in AI: an MCP client drives the seat |
+   | `none` | | No built-in AI: an MCP app drives this seat instead |
 
-3. Load any save. The AI starts playing, and a small panel on its screen shows its thoughts, chat and current action.
+   In `config.json` it looks like this:
 
-```json
-"Seats": [
-  { "Role": "ai", "Brain": "anthropic", "ApiKey": "sk-ant-..." }
-]
-```
+   ```json
+   "Seats": [
+     { "Role": "ai", "Brain": "anthropic", "ApiKey": "sk-ant-..." }
+   ]
+   ```
 
-### Several AIs, or you plus AIs
+3. Load any save. The AI starts playing right away, and a small panel on its screen shows what it thinks, says and
+   does.
 
-Turn on `SplitScreen`: up to four screens share the farm in the game's 2×2 grid. Each seat gets a `Role`: `ai`,
-`human` (you, P1 only), `camera` (just watches) or `off`. If the farm has too few cabins, the mod builds them and
-joins the farmhands by itself, so you don't need gamepads.
+### Several AIs together, or you with AIs
 
-"I play P1, two AIs play with me, and the world keeps running":
+1. Turn on `SplitScreen`. The screen splits 2×2 like the game's co-op mode, up to four screens on one farm.
+2. Give each seat a `Role`:
+   - `ai`: an AI plays it
+   - `human`: you play it (P1 only)
+   - `camera`: a screen that only watches, nobody plays
+   - `off`: no screen
+3. Load the save. If the farm has too few cabins, the mod builds them and brings the other farmers into the game by
+   itself, so you don't need gamepads.
+
+Example: you play P1, two AIs play with you, and time keeps running.
 
 ```json
 "SplitScreen": true,
@@ -121,36 +162,47 @@ joins the farmhands by itself, so you don't need gamepads.
 ]
 ```
 
-Seats, roles, time modes and every other setting: [Configuration](docs/configuration.md).
+`FreezeTimeWhileThinking` decides whether time stops while an AI thinks:
 
-### Connect your own AI client
+- `true` (default): the whole game world stops while an AI thinks, so a slow model loses no game time.
+- `false`: time runs as usual. The better choice when you play along.
 
-With the game running and a save loaded, add the mod as an MCP server. For [Claude Code](https://claude.com/claude-code):
+Every setting is listed in [Configuration](docs/configuration.md).
 
-```bash
-claude mcp add --transport http stardew http://localhost:8770/mcp
-```
+### Connect your own AI app (MCP)
 
-Then ask something like *"Water my crops, then go talk to Abigail."* Any client that speaks MCP over streamable HTTP
-can use the same URL. In split-screen each farmer has its own endpoint: `/mcp/p1` (same as `/mcp`), `/mcp/p2`,
-`/mcp/p3`. Give the seats you drive this way `"Brain": "none"`.
+1. Start the game and load a save.
+2. Add the mod as an MCP server in your app. For [Claude Code](https://claude.com/claude-code):
+
+   ```bash
+   claude mcp add --transport http stardew http://localhost:8770/mcp
+   ```
+
+3. Ask something like *"Water my crops, then go talk to Abigail."*
+
+Any other app that speaks MCP over streamable HTTP can use the same URL.
+In split-screen each farmer has its own URL: `/mcp/p1` (same as `/mcp`), `/mcp/p2`, `/mcp/p3`.
+Set the seats you drive from an app to `"Brain": "none"`.
 
 ### Pause
 
-Press `F8` in the game window: the running action finishes, then the whole world freezes. `F8` again continues.
-Stopping after the day and other run controls: [HTTP API](docs/api.md#run-control).
+Press `F8` in the game window. The mod lets the AI finish what it is doing, then stops the whole game. Press `F8`
+again to continue. To stop at the end of the day, or for other run controls, see [HTTP API](docs/api.md#run-control).
 
 ## Good to know
 
-- **Cost.** Every action is a model call with the game state in it. One in-game day costs roughly 50–300k input tokens
-  per AI, so cheap models (Haiku, Flash, GPT mini, a local model) are the sensible choice. `DailyTokenBudget` stops a
-  seat for the rest of the day once it has used that many tokens.
-- **Your keys** are stored as plain text in `config.json`. Don't share that file.
-- **Language.** The AIs think and chat in the game's language; `ThoughtLanguage` (e.g. `"English"`) overrides it.
-- **Local models** work through `openai` + `BaseUrl`, but small models struggle with 70 tools.
-- **How the AI plays** is set by its system prompt, `Mods/StardewMCP/assets/system_prompt.md`. Edit it to change
-  its behaviour.
-- **Performance.** Three or four screens are heavy: a 2560×1440 window at 60 FPS needs a mid-range GPU.
+- **Cost.** Every time the AI does one thing, the mod calls the model once and sends the game state with it.
+  One in-game day costs roughly 50,000–300,000 input tokens per AI, so cheap models (Haiku, Flash, GPT mini, a local
+  model) are the sensible choice. With `DailyTokenBudget` set, a seat that uses up its tokens stops until the next
+  morning.
+- **Your API keys** are stored as plain text in `config.json`. Don't share that file.
+- **Language.** The AIs think and talk in the game's language. To force one, set `ThoughtLanguage`, e.g.
+  `"English"` or `"Thai"`.
+- **Local models** work through `openai` + `BaseUrl`, but small models often get confused with 70 tools to choose
+  from.
+- **How the AI plays** is set in `Mods/StardewMCP/assets/system_prompt.md`. Edit that file to change its behaviour.
+- **Hardware.** Three or four screens at once are heavy: a 2560×1440 window at 60 FPS needs a mid-range GPU or
+  better.
 
 ## Documentation
 
@@ -160,27 +212,27 @@ Stopping after the day and other run controls: [HTTP API](docs/api.md#run-contro
 | 🧰 [Tools](docs/tools.md) | All MCP tools with their arguments, grouped by job |
 | 🌐 [HTTP API](docs/api.md) | Endpoints, run control, tool results and reason codes |
 | ⚙️ [Configuration](docs/configuration.md) | Every `config.json` setting, seats and roles, overlay language |
-| 🗺️ [Game coverage](docs/coverage.md) | How each game system is reached, tested or not yet |
+| 🗺️ [Game coverage](docs/coverage.md) | Which game systems work, are tested, or are not there yet |
 | 📖 [Glossary](CONTEXT.md) | The words this project uses: seat, brain, freeze, interrupt... |
 | 🤝 [Contributing](CONTRIBUTING.md) | Bug reports, tests, adding a tool |
 
 ## Troubleshooting
 
-| Problem | Try |
+| Problem | Fix |
 |---|---|
-| The SMAPI console doesn't show `Agent MCP at ...` | Check that the folder is `Mods/StardewMCP/` (not nested twice) and read the SMAPI log for errors |
-| The AI never starts | Read the SMAPI console after loading the save: a seat that can't start logs `pN: built-in AI not started: <problem>` (missing key, unknown provider...). `mcp_brain` lists the AIs that run |
-| Port 8770 is already in use | Change `HttpPort` and use the new port in your MCP client's URL |
-| The game seems stuck and the clock doesn't move | It is probably frozen while an AI thinks. `/api/state` shows who is thinking. An AI that stays silent longer than `ThinkTimeoutSeconds` stops holding the world |
-| The AI repeats the same failing action | The loop guard adds hints and finally blocks the repeat (`RepeatHintAfter`, `RepeatBlockAfter`, `NoProgressAfter`) |
-| Farmhands don't join in split-screen | Allow the Windows Firewall prompt, and keep `AutoBuildCabins` on (or build enough cabins yourself) |
+| The SMAPI console doesn't show `Agent MCP at ...` | Check that the folder is `Mods/StardewMCP/` and not nested twice, then read the SMAPI log for errors |
+| The AI never starts | Read the SMAPI console after loading the save. A seat that can't start logs `pN: built-in AI not started: <problem>`, such as a missing key or a misspelled provider. Type `mcp_brain` in the console to see which AIs are running |
+| Port 8770 is used by another program | Change `HttpPort` and use the same port in your MCP app's URL |
+| The game looks stuck and the clock doesn't move | Usually the game is waiting for an AI to think. Open `/api/state` to see who is thinking. An AI that stays silent longer than `ThinkTimeoutSeconds` no longer holds the game |
+| The AI keeps repeating the same failing action | The mod's loop guard first adds hints, then refuses the repeat. Tune it with `RepeatHintAfter`, `RepeatBlockAfter`, `NoProgressAfter` |
+| In split-screen, P2–P4 don't join the game | Allow the Windows Firewall prompt, and keep `AutoBuildCabins` on (or build enough cabins yourself) |
 
-To report a bug, see [CONTRIBUTING.md](CONTRIBUTING.md#reporting-a-bug). The SMAPI log link helps a lot.
+If you find a bug, open an issue with a link to your SMAPI log; it helps a lot. How: [CONTRIBUTING.md](CONTRIBUTING.md#reporting-a-bug).
 
 ## ⭐ Enjoying it?
 
-If watching three AIs argue over parsnips made you smile, **give the repo a star**. It helps other players and AI
-tinkerers find the project, and it tells us the next episode is worth making.
+If watching three AIs argue over parsnips made you smile, **give the repo a star**.
+It helps other players and AI tinkerers find the project, and it tells us the next episode is worth making.
 
 <a href="https://star-history.com/#duckxy166/stardew-ai-agent&Date">
   <picture>
@@ -203,12 +255,12 @@ dotnet build -c Release
 ```
 
 [ModBuildConfig](https://www.nuget.org/packages/Pathoschild.Stardew.ModBuildConfig) finds your game folder, copies
-the mod into `Mods/` and creates a release zip in `bin/`. The tests that run without the game are in
-[CONTRIBUTING.md](CONTRIBUTING.md#tests).
+the mod into `Mods/` and creates a release zip in `bin/`.
+How to run the tests that don't need the game: [CONTRIBUTING.md](CONTRIBUTING.md#tests).
 
-Scripts that play many days unattended (memory between days, save backups, a crash watchdog, OBS recording) are not
-part of this repository. Everything they need is the [HTTP API](docs/api.md); [docs/recording.md](docs/recording.md)
-describes one recording setup as an example.
+This repository has no scripts for letting AIs play many days unattended (memory between days, save backups, a crash
+watchdog, OBS recording). Everything such scripts need is in the [HTTP API](docs/api.md), and
+[docs/recording.md](docs/recording.md) describes one recording setup as an example.
 
 ## Credits
 
@@ -219,5 +271,6 @@ and WebSocket code have been removed.
 
 ## License
 
-[MIT](LICENSE). Stardew Valley is a trademark of ConcernedApe; this project is a fan-made mod and
-is not affiliated with ConcernedApe. No game files are included.
+[MIT](LICENSE): free to download, use, change and build on, as long as you keep the license text.
+Stardew Valley is a trademark of ConcernedApe; this project is a fan-made mod and is not affiliated with
+ConcernedApe. No game files are included.
