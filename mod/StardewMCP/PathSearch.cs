@@ -29,25 +29,34 @@ public partial class Pathfinder
     /// order, excluding the start tile and ending on the goal. Empty when already there, null when
     /// the goal can't be stood on or can't be reached.
     /// </summary>
-    public List<Vector2>? FindPath(IWalkableGrid grid, Vector2 start, Vector2 goal)
+    public List<Vector2>? FindPath(IWalkableGrid grid, Vector2 start, Vector2 goal) =>
+        FindPathToAny(grid, start, new[] { new Point((int)goal.X, (int)goal.Y) });
+
+    /// <summary>
+    /// Route to whichever of <paramref name="goals"/> is the shortest walk away, as the tiles to step on in order,
+    /// excluding the start tile and ending on that goal. Empty when <paramref name="start"/> is one of the goals, null
+    /// when none of them can be stood on or reached. One search, however many goals (the tiles around a villager).
+    /// </summary>
+    public List<Vector2>? FindPathToAny(IWalkableGrid grid, Vector2 start, IEnumerable<Point> goals)
     {
         var from = new Point((int)start.X, (int)start.Y);
-        var to = new Point((int)goal.X, (int)goal.Y);
-        if (from == to)
+        var targets = new HashSet<Point>(goals);
+        if (targets.Contains(from))
             return new List<Vector2>();
-        if (!Walkable(grid, to))
+        targets.RemoveWhere(t => !Walkable(grid, t));
+        if (targets.Count == 0)
             return null;
 
         var steps = new Dictionary<Point, int> { [from] = 0 };
         var parent = new Dictionary<Point, Point>();
         var done = new HashSet<Point>();
         var frontier = new PriorityQueue<Point, int>();
-        frontier.Enqueue(from, Distance(from, to));
+        frontier.Enqueue(from, Nearest(from, targets));
 
         while (frontier.TryDequeue(out var tile, out _))
         {
-            if (tile == to)
-                return Unwind(parent, from, to);
+            if (targets.Contains(tile))
+                return Unwind(parent, from, tile);
             if (!done.Add(tile))
                 continue; // stale queue entry
             if (done.Count > ExpandLimit)
@@ -63,7 +72,7 @@ public partial class Pathfinder
                     continue;
                 steps[next] = cost;
                 parent[next] = tile;
-                frontier.Enqueue(next, cost + Distance(next, to));
+                frontier.Enqueue(next, cost + Nearest(next, targets));
             }
         }
         return null;
@@ -78,6 +87,15 @@ public partial class Pathfinder
     }
 
     private static int Distance(Point a, Point b) => Math.Abs(a.X - b.X) + Math.Abs(a.Y - b.Y);
+
+    /// <summary>Distance to the closest goal: never more than the real walk, so the first goal reached is the nearest.</summary>
+    private static int Nearest(Point tile, HashSet<Point> goals)
+    {
+        int best = int.MaxValue;
+        foreach (var goal in goals)
+            best = Math.Min(best, Distance(tile, goal));
+        return best;
+    }
 
     private static List<Vector2> Unwind(Dictionary<Point, Point> parent, Point from, Point to)
     {

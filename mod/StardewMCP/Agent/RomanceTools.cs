@@ -67,14 +67,14 @@ internal static class Romance
     {
         var parts = who.friendshipData.Pairs
             .Where(kv => kv.Value.Status.ToString() is "Dating" or "Engaged" or "Married" or "Roommate")
-            .Select(kv => $"{kv.Value.Status.ToString().ToLowerInvariant()} {NpcInfo.ByName(kv.Key)?.displayName ?? kv.Key}")
+            .Select(kv => $"{kv.Value.Status.ToString().ToLowerInvariant()} {NpcInfo.Find(kv.Key)?.DisplayName ?? kv.Key}")
             .ToList();
         parts.AddRange(PlayerPartners(Players.Current.Id));
         return parts.Count == 0 ? "" : "Your relationships: " + string.Join(", ", parts) + ".";
     }
 
     /// <summary>What dating or marrying this villager still needs.</summary>
-    internal static string Requirements(Farmer who, NPC npc, VillagerInfo v)
+    internal static string Requirements(Farmer who, VillagerInfo v)
     {
         if (!v.Datable) return $"Romance: {v.DisplayName} can't be dated or married.";
         if (!v.Met)
@@ -100,66 +100,66 @@ internal static class Romance
 
     // ------------------------------------------------------------------ refusals (only what the game would refuse for sure)
 
-    private static string? NotDatable(NPC npc) =>
-        npc.datable.Value ? null : $"{npc.displayName} can't be dated or married: only the villagers marked \"can date\" in villagers() can.";
+    private static string? NotDatable(NpcSpot npc) =>
+        npc.Datable ? null : $"{npc.DisplayName} can't be dated or married: only the villagers marked \"can date\" in villagers() can.";
 
-    internal static string? BouquetRefusal(Farmer who, NPC npc)
+    internal static string? BouquetRefusal(Farmer who, NpcSpot npc)
     {
         var no = NotDatable(npc);
         if (no != null) return no;
         switch (StatusOf(who, npc.Name))
         {
-            case "": return $"You haven't met {npc.displayName} yet: talk_to introduces you.";
-            case "dating": return $"You are already dating {npc.displayName}. The next step is mermaid_pendant at 10 hearts.";
-            case "engaged": return $"You are already engaged to {npc.displayName}.";
-            case "married": return $"You are married to {npc.displayName}.";
+            case "": return $"You haven't met {npc.DisplayName} yet: talk_to introduces you.";
+            case "dating": return $"You are already dating {npc.DisplayName}. The next step is mermaid_pendant at 10 hearts.";
+            case "engaged": return $"You are already engaged to {npc.DisplayName}.";
+            case "married": return $"You are married to {npc.DisplayName}.";
         }
         int points = PointsWith(who, npc.Name);
         if (points < DatingPoints)
-            return $"{npc.displayName} has {Hearts(points)} hearts with you ({points} points); dating needs {Hearts(DatingPoints)} hearts ({DatingPoints} points). " +
+            return $"{npc.DisplayName} has {Hearts(points)} hearts with you ({points} points); dating needs {Hearts(DatingPoints)} hearts ({DatingPoints} points). " +
                    "Talk to them and give gifts (talk_to) first.";
         if (!Carrying(who, Bouquet))
             return "You have no Bouquet in your inventory. Pierre's shop (shop_list, buy) is the place to look.";
         return null;
     }
 
-    internal static string? PendantRefusal(Farmer who, NPC npc)
+    internal static string? PendantRefusal(Farmer who, NpcSpot npc)
     {
         var no = NotDatable(npc);
         if (no != null) return no;
         switch (StatusOf(who, npc.Name))
         {
-            case "": return $"You haven't met {npc.displayName} yet: talk_to introduces you.";
-            case "engaged": return $"You are already engaged to {npc.displayName}. The wedding is held by itself a few days after the proposal.";
-            case "married": return $"You are married to {npc.displayName}.";
+            case "": return $"You haven't met {npc.DisplayName} yet: talk_to introduces you.";
+            case "engaged": return $"You are already engaged to {npc.DisplayName}. The wedding is held by itself a few days after the proposal.";
+            case "married": return $"You are married to {npc.DisplayName}.";
             case "dating": break;
-            default: return $"You are not dating {npc.displayName} yet. Start with bouquet(\"{npc.Name}\") (8 hearts and a Bouquet).";
+            default: return $"You are not dating {npc.DisplayName} yet. Start with bouquet(\"{npc.Name}\") (8 hearts and a Bouquet).";
         }
         int points = PointsWith(who, npc.Name);
         if (points < MarriagePoints)
-            return $"{npc.displayName} has {Hearts(points)} hearts with you ({points} points); a proposal needs {Hearts(MarriagePoints)} hearts ({MarriagePoints} points).";
+            return $"{npc.DisplayName} has {Hearts(points)} hearts with you ({points} points); a proposal needs {Hearts(MarriagePoints)} hearts ({MarriagePoints} points).";
         if (!Carrying(who, Pendant))
             return "You have no Mermaid's Pendant in your inventory.";
         return null;
     }
 
     /// <summary>One sentence about what a bouquet or pendant changed, from the friendship status before and after.</summary>
-    internal static string Outcome(Farmer who, NPC npc, string before, string after)
+    internal static string Outcome(Farmer who, NpcSpot npc, string before, string after)
     {
         if (after != before)
         {
             return after switch
             {
-                "dating" => $" You are now dating {npc.displayName}!",
-                "engaged" => $" You are now engaged to {npc.displayName}! The wedding is held about 3 days from now; the game plays it by itself.",
-                "married" => $" You are now married to {npc.displayName}!",
-                _ => $" Your status with {npc.displayName} is now {after}."
+                "dating" => $" You are now dating {npc.DisplayName}!",
+                "engaged" => $" You are now engaged to {npc.DisplayName}! The wedding is held about 3 days from now; the game plays it by itself.",
+                "married" => $" You are now married to {npc.DisplayName}!",
+                _ => $" Your status with {npc.DisplayName} is now {after}."
             };
         }
         var hint = after == "dating" && HouseLevel(who) == 0
             ? " Your house has no kitchen yet (house level 0): upgrade it first (Robin), then try again."
             : "";
-        return $" Your status with {npc.displayName} is still {(after.Length == 0 ? "unchanged" : after)}: read their reaction above, villagers(\"{npc.Name}\") shows what is missing.{hint}";
+        return $" Your status with {npc.DisplayName} is still {(after.Length == 0 ? "unchanged" : after)}: read their reaction above, villagers(\"{npc.Name}\") shows what is missing.{hint}";
     }
 
     // ------------------------------------------------------------------ proposals between players
@@ -430,7 +430,7 @@ public static partial class AgentTools
     {
         var asked = S(a, "name").Trim();
         if (asked.Length == 0) { c.Fail("name is empty. villagers() marks who can be dated with \"can date\"."); yield break; }
-        var npc = NpcInfo.ByName(asked);
+        var npc = NpcInfo.Find(asked);
         if (npc == null || !npc.CanSocialize) { c.Fail($"No villager called \"{asked}\". villagers() lists who you can befriend."); yield break; }
 
         var refusal = bouquet ? Romance.BouquetRefusal(P, npc) : Romance.PendantRefusal(P, npc);
@@ -596,7 +596,7 @@ internal static class RomanceDebug
     /// <summary>set_friendship {npc, points}: friendship points with a villager (8 hearts = 2000), meeting them if needed.</summary>
     internal static IEnumerator SetFriendship(JsonElement a, CallContext c)
     {
-        var npc = NpcInfo.ByName(AgentTools.S(a, "npc"));
+        var npc = NpcInfo.Find(AgentTools.S(a, "npc"));
         if (npc == null) { c.Fail("npc is required (e.g. \"Abigail\")"); yield break; }
         var me = Game1.player;
         if (!me.friendshipData.TryGetValue(npc.Name, out var f))
@@ -605,7 +605,7 @@ internal static class RomanceDebug
             me.friendshipData.Add(npc.Name, f);
         }
         f.Points = Math.Clamp(AgentTools.I(a, "points", 0), 0, 3500);
-        c.Result = $"{npc.Name}: {f.Points} points, status {f.Status}, datable {npc.datable.Value}";
+        c.Result = $"{npc.Name}: {f.Points} points, status {f.Status}, datable {npc.Datable}";
         yield break;
     }
 

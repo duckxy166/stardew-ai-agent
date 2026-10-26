@@ -6,7 +6,6 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Xna.Framework;
 using StardewValley;
-using StardewValley.Pathfinding;
 using StardewValley.Tools;
 using Monster = StardewValley.Monsters.Monster;
 using SObject = StardewValley.Object;
@@ -146,7 +145,7 @@ public static partial class AgentTools
         }
         if (best == null) return null;
 
-        // PathFindController pops from the top of the stack, so push the route backwards.
+        // The controller pops from the top of the stack, so push the route backwards.
         var steps = new Stack<Point>();
         for (int i = Math.Min(best.Count, maxSteps) - 1; i >= 0; i--)
             steps.Push(new Point((int)best[i].X, (int)best[i].Y));
@@ -255,7 +254,7 @@ public static partial class AgentTools
                     ignoreUntil[mon] = t + FightIgnoreTicks;
                 else if (steps.Count > 0)
                 {
-                    P.controller = new PathFindController(steps, P, loc) { NPCSchedule = false };
+                    P.controller = new WalkController(steps, P, loc);
                     P.setRunning(true, true);
                 }
                 nextPlan = t + FightReplanTicks;

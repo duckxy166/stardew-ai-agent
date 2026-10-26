@@ -128,6 +128,10 @@ What a farmer sees of the others in view: what each is actually doing, next to w
 Something that happens to a farmer (a mention, a gift, an arrival, a theft, rain, crows) and stops its long action.
 It reaches the farmer as an event in its next result.
 
+**Sighting**:
+Something worth picking up that a farmer passed close to its route: forage, a spot to dig, a bush with berries, an
+item on the ground. A walk's result lists the sightings still there; going back for them is the AI's choice.
+
 **Ownership**:
 Who planted a crop or placed a chest or machine.
 

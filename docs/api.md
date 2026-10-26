@@ -66,6 +66,8 @@ only when the tool failed.
   then says why the batch stopped (or, failing that, why tiles were skipped).
 - The common failures (`walk_to`, `travel_to`, `use_tool`, `plant`, `harvest`, `interact`, `talk_to`, `buy`, `ship`,
   `eat`, `go_to_bed`, `shop_list`, `think`) have codes; other tools still return text only (`reason` is `other` on failure).
+- `walk_to`, `travel_to` and `talk_to` may end their text with a `Seen on the way, still there: ...` line: forage, dig
+  spots, berry bushes and dropped items the farmer passed (also when an event stopped the walk). The log's result text has it too.
 - Logs: result lines of `day_NNN.jsonl` carry `reason` and `partial` (the text there stays untagged). Next to each
   day's log the mod writes `day_NNN_summary.json` with the failure reasons per tool and per player. The overlay marks
   partial results `◐` and shows the reason, the replay shows a reason badge.
