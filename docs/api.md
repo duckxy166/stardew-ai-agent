@@ -85,6 +85,7 @@ the other seats add `_p2`, `_p3`:
 | `lessons.md`, `plan.md`, `notes.md` | What `journal` keeps across days |
 | `self.md`, `people.md` | The AI's note on who it is, and its line on each other farmer |
 | `stats_NNN.json` | Daily stats, written at the day rollover |
+| `chests.jsonl` | One line per chest change, all seats in one file: `{day, time, seat, farmer, owner, action: put\|took, item, count, location, x, y}`. The same changes are `chest` entries in `day_NNN.jsonl` (args `{owner, location, tile, changes}`) |
 
 ## Building on top of the mod
 

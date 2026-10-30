@@ -24,16 +24,18 @@ public static partial class AgentTools
     {
         Name = "chest",
         Description = "Look into, fill or empty a storage chest or the fridge in one call: you walk next to it, open it, move the items and close it again. " +
-                      "action: list (default), store (your pack into the chest) or take (chest into your pack). " +
+                      "action: list (default), store (your pack into the chest), take (chest into your pack) " +
+                      "or all (every chest and fridge on the farm with whose it is, what it holds and who put in or took out what lately; no walking). " +
                       "item: one item name, or \"everything\" (store: all except tools, seeds and cooked dishes, so tidying the pack is one call; take: all). " +
                       "items: several names at once. quality: normal, silver, gold or iridium to move only that quality (default every quality). " +
-                      "quantity: how many of each named item (default all). The result says what moved, per quality, and what did not fit. " +
+                      "quantity: how many of each named item (default all). The result says what moved, per quality, what did not fit, " +
+                      "and what others put in or took out since you last used that chest. " +
                       "x, y is the chest tile; leave it out to use a chest menu you already opened with interact.",
         Schema = Obj(new
         {
             x = Int("Chest tile x"),
             y = Int("Chest tile y"),
-            action = new { type = "string", @enum = new[] { "list", "store", "take" }, description = "list (default), store or take" },
+            action = new { type = "string", @enum = new[] { "list", "store", "take", "all" }, description = "list (default), store, take or all" },
             item = Str("Item name, or \"everything\""),
             items = new { type = "array", items = new { type = "string" }, description = "Several item names" },
             quality = new { type = "string", @enum = new[] { "normal", "silver", "gold", "iridium" }, description = "Only this quality (default: all)" },
@@ -129,9 +131,14 @@ public static partial class AgentTools
     {
         var action = S(a, "action", "list").Trim().ToLowerInvariant();
         if (action.Length == 0) action = "list";
+        if (action == "all")
+        {
+            c.Result = ChestLedger.Report(Rt.Log.Player);
+            yield break;
+        }
         if (action != "list" && action != "store" && action != "take")
         {
-            c.Fail($"Unknown action \"{action}\". Use list, store or take.");
+            c.Fail($"Unknown action \"{action}\". Use list, store, take or all.");
             yield break;
         }
 
@@ -188,7 +195,10 @@ public static partial class AgentTools
             yield break;
         }
 
+        var used = ((ItemGrabMenu)Game1.activeClickableMenu!).context as Chest;
         yield return ChestWork(action, names, everything, quality, quantity, spot, c);
+        if (used != null && c.Result.Length > 0)
+            c.Result += ChestLedger.OthersChanged((used.Location ?? Loc).NameOrUniqueName, (int)used.TileLocation.X, (int)used.TileLocation.Y, Rt.Log.Player);
         if (opened && Game1.activeClickableMenu != null)
             yield return CloseMenu(default, new CallContext());
     }

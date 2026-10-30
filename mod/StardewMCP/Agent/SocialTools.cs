@@ -123,7 +123,7 @@ public static class SocialTools
     /// <summary>"Gemini": how players refer to each other.</summary>
     internal static string Label(PlayerSlot s) => NameOf(s) ?? "?";
 
-    private static IEnumerable<PlayerSlot> OtherAis() =>
+    internal static IEnumerable<PlayerSlot> OtherAis() =>
         Players.Slots.Where(s => s.Role == SeatRole.Ai && s.Id != Me && s.Active && NameOf(s) != null);
 
     /// <summary>The AI seat named by <paramref name="to"/> (id or name); otherwise fails <paramref name="c"/> with the valid choices.</summary>

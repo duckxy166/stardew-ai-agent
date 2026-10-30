@@ -25,7 +25,7 @@ Every tool the AI can call, grouped by job. Each farmer's MCP endpoint (`/mcp`, 
 | Tool | Arguments | What it does |
 |---|---|---|
 | `walk_to` | `x`, `y` | Pathfind to a tile on the current map. The result lists the forage, spots to dig, berry bushes and dropped items passed on the way that are still there |
-| `travel_to` | `location` | Go to another map. A shop owner's or villager's name also works; a closed door says when it opens. Lists what was seen on the way, like `walk_to` |
+| `travel_to` | `location` | Go to another map. A shop owner's or villager's name also works; a closed door says when it opens. Lists what was seen on the way, like `walk_to`. In co-op the game lets farmers into a festival only together: it waits up to a minute of running time for the others (they are told), then gives up with `not_ready` instead of leaving you stuck in the box |
 | `mount`, `dismount` | | Ride the horse (needs a Stable) and get off |
 
 ## Farm
@@ -63,7 +63,7 @@ Read from the game's own data, costs no game time.
 |---|---|---|
 | `craft` | *`recipe`*, *`quantity`* | Craft from the recipes you know; `craft()` lists them |
 | `cook` | *`recipe`*, *`quantity`* | Cook the dishes you know in the farmhouse kitchen, from the pack and the fridge; `cook()` lists them |
-| `chest` | *`x`*, *`y`*, *`action`*, *`item`*, *`items`*, *`quality`*, *`quantity`* | Store or take items in a chest or the fridge in one call: by name and quality, several items, or "everything" |
+| `chest` | *`x`*, *`y`*, *`action`*, *`item`*, *`items`*, *`quality`*, *`quantity`* | Store or take items in a chest or the fridge in one call: by name and quality, several items, or "everything". The result adds what others put in or took out since you last used that chest. `action=all` lists every chest and fridge on the farm with whose it is, what it holds and the recent changes (no walking) |
 | `equip` | `item`, *`slot`*, *`count`* | Put on a ring, boots or a hat (the old one goes back), or attach bait and tackle to the fishing rod |
 | `wear` | `item` | Put on a hat, shirt or pants from the pack |
 | `wardrobe` ⚡ | | What you wear and the clothes you carry |
@@ -100,7 +100,7 @@ Buildings and animals are paid from the caller's own money and items.
 | `talk_to` | `name`, *`gift_item`*, *`go`* | Find a villager (travels across maps unless `go=false`), talk, optionally give a gift; reports friendship points before and after and their reaction. A villager who is walking is followed and talked to from any tile next to them, corners included |
 | `bouquet` | `name`, *`go`* | Ask a villager to date you (8 hearts) |
 | `mermaid_pendant` | `name`, *`go`* | Propose to a villager (10 hearts, upgraded house) |
-| `festival` | `action`, *`to`*, *`max`* | On a festival day: `start` talks to Lewis and begins the main event (waits for the other players), `leave` walks out, `eggs` picks up eggs during the Egg Festival's egg hunt (nearest first, until the hunt ends or `max` are picked; `look` shows the eggs as `E`) |
+| `festival` | `action`, *`to`*, *`max`* | On a festival day: `start` talks to Lewis and begins the main event, `leave` leaves the festival (alone it confirms; in co-op every farmer must leave together). In co-op both wait up to a minute of running time for the other farmers, tell them, then cancel the wait with `not_ready`. `eggs` picks up eggs during the Egg Festival's egg hunt (nearest first, until the hunt ends or `max` are picked; `look` shows the eggs as `E`) |
 
 ## Quests and the Community Center
 

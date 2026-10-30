@@ -96,6 +96,9 @@ public static partial class WorldText
             case NamingMenu nm:
                 sb.AppendLine(Naming.StatusLine(nm));
                 break;
+            case ReadyCheckDialog check:
+                sb.AppendLine(AgentTools.ReadyCheckLine(check));
+                break;
             default:
                 // A Yes/No or proposal box (#53) has its own tool; any other menu is read with menu().
                 sb.AppendLine(Romance.MenuLine(Game1.activeClickableMenu) ??

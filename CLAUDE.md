@@ -69,6 +69,8 @@ mod/StardewMCP/
     Hud.cs             In-game panel per AI screen (name, model, action or thinking time, last think / say); fed by AgentLog.Added
     ConfigMenu.cs      Generic Mod Config Menu pages (optional dependency; IGenericModConfigMenuApi.cs is the copied API)
     Cabins.cs          Builds the farmhands' cabins (AutoBuildCabins, debug build_cabins)
+    ChestLedger.cs     Every chest put / take (kind chest, chests.jsonl): chest(action=all), changes since your last use, briefing line
+    SleepWaitWatch.cs  Closes a message box left open while another farmer waits in bed (rule: StaleMessage.cs)
     Brain/             The built-in AI loop ("viewer edition": the mod plays a seat itself with the user's API key)
       Llm.cs           Provider-neutral chat types, ILlmProvider, LlmProviders factory, SchemaFilter (game-free)
       AnthropicProvider.cs / OpenAiProvider.cs / GeminiProvider.cs   Wire formats (game-free; OpenAI = any compatible server)
@@ -146,6 +148,7 @@ mod/StardewMCP/Agent/BubbleText.cs   Line breaking for the speech bubbles (Thai-
 mod/StardewMCP/Agent/SpeechQueue.cs  say lines shown one at a time per place, timed only while the world runs
 mod/StardewMCP/Agent/WalkMath.cs     OnTile (the game's "reached this tile" rule), InReach (the action button's reach), Around
 mod/StardewMCP/Agent/SightLog.cs     Sight, SightLog: the "Seen on the way" line of walk_to / travel_to / talk_to
+mod/StardewMCP/Agent/StaleMessage.cs When SleepWaitWatch closes a message box at bedtime
 mod/StardewMCP/Agent/Brain/Llm.cs, *Provider.cs, Prompts.cs   Built-in AI wire formats and prompt texts
 ```
 

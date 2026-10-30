@@ -30,6 +30,7 @@ public class ModEntry : Mod
         AgentTools.Config = _config;
         Players.Init(helper, Monitor, _config, _log);
         DayStats.Init(_log);
+        ChestLedger.Init(_log);
         WorldClock.Init(_config);
         PassOut.Init(_log);
         Perception.Init();
@@ -117,6 +118,11 @@ public class ModEntry : Mod
         SplitScreen.ScreenTick();
 
         seat.Runtime.Tick();
+        if (Context.IsWorldReady)
+        {
+            SleepWaitWatch.Tick(seat);
+            ChestLedger.Tick(seat);
+        }
         Briefing.Tick(seat, e.IsMultipleOf(300));
         if (e.IsMultipleOf(15))
             seat.State = ScreenState.Capture();

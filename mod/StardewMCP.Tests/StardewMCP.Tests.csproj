@@ -43,6 +43,7 @@
     <Compile Include="..\StardewMCP\Agent\SpeechQueue.cs" Link="Mod\SpeechQueue.cs" />
     <Compile Include="..\StardewMCP\Agent\WalkMath.cs" Link="Mod\WalkMath.cs" />
     <Compile Include="..\StardewMCP\Agent\SightLog.cs" Link="Mod\SightLog.cs" />
+    <Compile Include="..\StardewMCP\Agent\StaleMessage.cs" Link="Mod\StaleMessage.cs" />
     <Compile Include="..\StardewMCP\Agent\Brain\Llm.cs" Link="Mod\Brain\Llm.cs" />
     <Compile Include="..\StardewMCP\Agent\Brain\AnthropicProvider.cs" Link="Mod\Brain\AnthropicProvider.cs" />
     <Compile Include="..\StardewMCP\Agent\Brain\OpenAiProvider.cs" Link="Mod\Brain\OpenAiProvider.cs" />

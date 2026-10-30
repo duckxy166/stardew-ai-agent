@@ -132,7 +132,8 @@ public static partial class AgentTools
         {
             Name = "festival",
             Description = "On a festival day, standing in the festival's map during its hours. start = walk to Lewis, talk to him and answer yes to begin the main event (egg hunt, dance, luau...); " +
-                          "with several farmers the game waits until everyone is ready. leave = walk out of the festival to another map (default Farm) and confirm the leave question. " +
+                          "leave = leave the festival for another map (default Farm); alone it confirms, with several farmers everyone must leave together. " +
+                          "With several farmers start and leave wait up to a minute for the others (they are told), then give up with not_ready. " +
                           "eggs = at the Egg Festival, once Lewis has started the egg hunt: pick up eggs nearest first until the hunt ends (about 50 seconds); the most eggs wins. " +
                           "Use talk_to for the festival's villagers and booths (shops) and interact with holding for the Luau soup pot. calendar shows when and where each festival is.",
             Schema = Obj(new
@@ -353,42 +354,126 @@ public static partial class AgentTools
         }
 
         // The ready check closes when every farmer has said yes (or someone cancels).
-        for (int i = 0; i < 1200 && Game1.activeClickableMenu is ReadyCheckDialog; i++) yield return null;
-        if (Game1.activeClickableMenu is ReadyCheckDialog)
-            c.Result = "Waiting for the other players to be ready (ready check). Call festival(start) again to keep waiting, or close_menu to cancel.";
+        var wait = new CallContext();
+        yield return WaitReadyCheck("festival(start) at Lewis", wait);
+        if (!wait.Ok)
+            c.Fail(wait.Reason ?? Reasons.NotReady, wait.Result);
         else if (saidYes)
             c.Result = ("You told Lewis you are ready. " + WorldText.MenuState().Trim()).Trim();
         else
             c.Result = ("You talked to Lewis; there was no yes/no question to answer. " + WorldText.MenuState().Trim()).Trim();
     }
 
-    /// <summary>Walk out like travel_to does; the game asks "leave the festival?" on the way, which is answered yes.</summary>
+    /// <summary>
+    /// Leave the festival the way walking off its map does (<see cref="Event.TryStartEndFestivalDialogue"/>): alone the game
+    /// asks to confirm, in co-op every farmer must agree (the "festivalEnd" ready check). The festival map is a temporary copy
+    /// with no route out, so this asks the event directly instead of walking, then travels on to the destination.
+    /// Ported from Pichaya31847/stardew-ai-agent (MIT, commit efc8be3).
+    /// </summary>
     private static IEnumerator FestivalLeave(JsonElement a, CallContext c)
     {
         var dest = S(a, "to").Trim();
         if (dest.Length == 0) dest = "Farm";
-        if (Game1.getLocationFromName(dest) == null) { c.Fail($"Unknown location \"{dest}\"."); yield break; }
-        if (Game1.activeClickableMenu != null) { c.Fail("Close the open menu or dialogue first (close_menu or respond)."); yield break; }
+        if (Game1.getLocationFromName(dest) == null) { c.Fail(Reasons.NotFound, $"Unknown location \"{dest}\"."); yield break; }
+        if (!(Game1.eventUp && Game1.CurrentEvent is { isFestival: true } ev)) { yield return TravelTo(dest, c); yield break; }
 
         var start = Loc;
-        var walk = new CallContext();
-        yield return TravelTo(dest, walk);
-        for (int i = 0; i < 3 && Loc == start && Game1.activeClickableMenu is DialogueBox { isQuestion: true } box; i++)
+        for (int step = 0; step < 8 && Game1.activeClickableMenu is DialogueBox { isQuestion: false }; step++)
+            yield return Respond(FestivalJson("{}"), new CallContext());
+        if (Game1.activeClickableMenu is not ReadyCheckDialog { checkName: "festivalEnd" })
         {
-            int yes = FestivalYesOption(box);
-            if (yes < 0) break;
-            yield return Respond(FestivalJson($"{{\"option\":{yes}}}"), new CallContext());
-            for (int t = 0; t < 300 && Loc == start; t++) yield return null;
-            yield return WaitIdle();
+            if (Game1.activeClickableMenu != null)
+            {
+                c.Fail(Reasons.MenuOpen, "Close the open menu or answer the question first (close_menu or respond). " + WorldText.MenuState().Trim());
+                yield break;
+            }
+            ev.TryStartEndFestivalDialogue(P);
+            yield return Ticks(10);
         }
-        if (Loc != start && !Loc.Name.Equals(dest, StringComparison.OrdinalIgnoreCase))
-            yield return TravelTo(dest, walk = new CallContext());
-        if (Loc == start)
+        if (Game1.activeClickableMenu is ConfirmationDialog confirm and not ReadyCheckDialog)
         {
-            c.Fail($"Still in the festival. {(walk.Ok ? "" : walk.Result + " ")}{WorldText.MenuState().Trim()}".Trim());
+            var ok = Field(confirm, "okButton");
+            if (ok != null) Click(confirm, ok);
+        }
+        else
+        {
+            var wait = new CallContext();
+            yield return WaitReadyCheck("festival(leave)", wait);
+            if (!wait.Ok) { c.Fail(wait.Reason ?? Reasons.NotReady, wait.Result); yield break; }
+        }
+        for (int t = 0; t < 600 && (Loc == start || Game1.eventUp); t++) yield return null;
+        yield return WaitIdle();
+        if (Loc == start || Game1.eventUp)
+        {
+            c.Fail(Reasons.NotReady, $"Still in the festival. {WorldText.MenuState().Trim()}".Trim());
             yield break;
         }
+        if (!Loc.Name.Equals(dest, StringComparison.OrdinalIgnoreCase))
+        {
+            var walk = new CallContext();
+            yield return TravelTo(dest, walk);
+            if (!walk.Ok) { c.Fail(walk.Reason ?? Reasons.NoPath, $"Left the festival (now in {Loc.Name}), but couldn't reach {dest}: {walk.Result}"); yield break; }
+        }
         c.Result = $"Left the festival. You are now in {Loc.Name} at ({P.TilePoint.X},{P.TilePoint.Y}).";
+    }
+
+    // ------------------------------------------------------------------ co-op ready checks
+
+    /// <summary>Seconds of running world time a farmer waits in a ready check for the others before it gives up and cancels.</summary>
+    private const int ReadyCheckWaitSeconds = 60;
+
+    private static string ReadyCheckWhat(string name) => name switch
+    {
+        "festivalStart" => "to go into today's festival: the game lets farmers in only together",
+        "festivalEnd" => "to leave the festival: the game lets farmers out only together",
+        "sleep" => "to sleep",
+        _ => "to go on with the festival"
+    };
+
+    /// <summary>The status line for a co-op ready check. It is not a question: answer_proposal and respond do nothing to it.</summary>
+    internal static string ReadyCheckLine(ReadyCheckDialog check)
+    {
+        int ready = Game1.netReady.GetNumberReady(check.checkName), need = Game1.netReady.GetNumberRequired(check.checkName);
+        return $"Waiting for the other farmers ({ready}/{need} ready) {ReadyCheckWhat(check.checkName)}. This is not a yes/no question; " +
+               (check.isCancelable() ? "close_menu stops waiting." : "it can't be cancelled any more.");
+    }
+
+    /// <summary>
+    /// A co-op ready check is open (entering or leaving a festival, its main event): tell the other AIs once, wait up to
+    /// <see cref="ReadyCheckWaitSeconds"/> for them, then cancel it so the farmer never stays stuck in the box. Only ticks
+    /// while the world runs count: while another AI thinks the world is frozen and nobody can walk over. Sleep has its
+    /// own handling (go_to_bed, Bedtime) and is left alone. Fails <paramref name="c"/> with not_ready on timeout.
+    /// Ported from Pichaya31847/stardew-ai-agent (MIT, commit efc8be3; their day 13: 196 answer_proposal calls on the box).
+    /// </summary>
+    internal static IEnumerator WaitReadyCheck(string retry, CallContext c)
+    {
+        if (Game1.activeClickableMenu is not ReadyCheckDialog check || check.checkName == "sleep") yield break;
+        var name = check.checkName;
+        var me = Players.ById(Rt.Log.Player);
+        var who = me != null ? SocialTools.Label(me) : P.Name;
+        var others = SocialTools.OtherAis().ToList();
+        foreach (var s in others)
+            SocialTools.Deliver(s, $"[{WorldText.FormatTime(Game1.timeOfDay)}] {who} is waiting at {Loc.Name} {ReadyCheckWhat(name)}. " +
+                                   (name == "festivalStart" ? "travel_to the festival's map to go in with them, or carry on with your own plans."
+                                    : name == "festivalEnd" ? "festival(leave) to leave with them, or stay."
+                                    : "Join them if you want to."));
+
+        for (int running = 0; running < 60 * ReadyCheckWaitSeconds && Game1.activeClickableMenu is ReadyCheckDialog { checkName: var n } && n == name;)
+        {
+            if (!WorldClock.Frozen) running++;
+            yield return null;
+        }
+        if (Game1.activeClickableMenu is not ReadyCheckDialog still || still.checkName != name)
+            yield break; // everyone was ready (or the check closed by itself)
+
+        int ready = Game1.netReady.GetNumberReady(name), need = Game1.netReady.GetNumberRequired(name);
+        bool cancelled = still.isCancelable();
+        if (cancelled) still.cancel();
+        var where = others.Count == 0 ? "" : " Waiting on: " + string.Join(", ", others.Select(s =>
+            $"{SocialTools.Label(s)}{(Romance.FarmerOf(s)?.currentLocation is { } l ? $" (in {l.Name})" : "")}")) + ".";
+        c.Fail(Reasons.NotReady, $"Only {ready}/{need} farmers were ready {ReadyCheckWhat(name)}, after {ReadyCheckWaitSeconds} s." + where +
+                                 (cancelled ? " The wait was cancelled, so you can move again." : "") +
+                                 $" They were told. Do something nearby and try {retry} again when they come; don't repeat it right away.");
     }
 
     // ------------------------------------------------------------------ sell
