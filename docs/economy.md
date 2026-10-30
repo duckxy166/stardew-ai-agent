@@ -26,8 +26,15 @@ Everything here was checked against the decompiled game (1.6) and, where marked,
   seat harvests a crop planted by another seat (`Crop.harvest`) or takes an item out of a chest another seat
   placed (`Chest.grabItemFromChest`, the callback the chest menu uses). The hooks are Harmony patches, so every
   path counts: `harvest`, `interact`, a scythe swing, and the chest menu (`menu take`).
-- Not recorded: opening someone's chest without taking anything, putting items into it, the starting plot as a
-  fixed tile area. A plot is "whatever the seat planted"; a fixed area per seat would be a config of rectangles.
+- Chest ledger (`ChestLedger`): when a chest menu closes, its contents are compared with what it held when it opened,
+  and every change (put or took, any chest, any path) becomes a `chest` log entry and a line in `chests.jsonl`. It sits
+  beside the `theft` entries, it does not replace them. The owner hears about it: `chest`'s result adds what others
+  put in or took out since you last used that chest, the morning briefing lists yesterday's changes by others to your
+  chests, and `chest(action=all)` lists every chest with its owner, contents and the recent changes. Ported from
+  [Pichaya31847/stardew-ai-agent](https://github.com/Pichaya31847/stardew-ai-agent) (MIT), where chests are shared;
+  here they stay personal.
+- Not recorded as theft: opening someone's chest without taking anything, putting items into it (the ledger has the
+  put), the starting plot as a fixed tile area. A plot is "whatever the seat planted"; a fixed area per seat would be a config of rectangles.
 
 ## Payments
 
@@ -61,6 +68,10 @@ not in bed is told once per day that the others are waiting.
    `WorldClock`, so the world froze until the 300 s think timeout and `sleep_together` took 321 s. Fixed with
    `AgentRuntime.WakingUp` (the world is not frozen while any seat is waking up); it now takes about 21 s.
    `go_to_bed` also closes any open menu first (a shop left open after a failed buy blocked the sleep).
+6. A message box left open on a farmer who is still up holds the night (the fork's day 56: one AI waited in bed about
+   five real minutes). `SleepWaitWatch` (each AI seat's screen) closes a box with no text after 2 s, and any other
+   message (never a question) after 20 s of running world time while another farmer waits in bed; the farmer is told
+   on its next result. Frozen time does not count, so an AI that is still reading the box is not cut off.
 
 Design decisions left open (not done):
 
@@ -83,3 +94,9 @@ Design decisions left open (not done):
   `festivalEvent` message to the other screens only when answered by the **host** (`Game1.IsServer`, no dedicated
   host). Decision: P1 starts the main event; the others join after hearing it in chat.
 - Minigames (egg hunt, fishing, grange) are per screen (`Game1.currentMinigame`).
+- Waiting for the others: `travel_to` into the festival map, `festival(start)` and `festival(leave)` stay in the
+  `festivalStart` / `festivalEnd` / main-event ready check for up to 60 s of running world time, tell the other AIs
+  where they are waited for, then cancel the check (when it still can be) and fail with `not_ready`. `festival(leave)`
+  asks the event directly (`Event.TryStartEndFestivalDialogue`, the call walking off the map makes), since the
+  festival map has no route out. Ported from [Pichaya31847/stardew-ai-agent](https://github.com/Pichaya31847/stardew-ai-agent)
+  (MIT), whose day 13 had 196 `answer_proposal` calls on the waiting box. Not yet run in game here.

@@ -992,7 +992,15 @@ public static partial class AgentTools
                 }
             }
 
-            for (int i = 0; i < 300 && Loc == loc; i++) yield return null;
+            for (int i = 0; i < 300 && Loc == loc && Game1.activeClickableMenu is not ReadyCheckDialog; i++) yield return null;
+            if (Game1.activeClickableMenu is ReadyCheckDialog { checkName: "festivalStart" })
+            {
+                // Co-op festivals let the farmers in only together: wait for the others a while, never answer it as a question.
+                var together = new CallContext();
+                yield return WaitReadyCheck($"travel_to {next}", together);
+                if (!together.Ok) { c.Fail(together.Reason ?? Reasons.NotReady, $"Couldn't go from {loc.Name} to {next}: {together.Result}"); yield break; }
+                for (int i = 0; i < 300 && Loc == loc; i++) yield return null;
+            }
             yield return WaitIdle();
             if (Loc == loc)
             {

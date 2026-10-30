@@ -14,7 +14,8 @@ namespace StardewMCP.Agent;
 /// Whose thing is it? Chests and machines already carry the game's own <c>Object.owner</c> (the farmer who
 /// placed them); a crop is owned by the seat that planted it (kept in the soil's modData, so it is saved with
 /// the game). Taking from another seat's chest or harvesting its crop is allowed, as in the game, but writes a
-/// <c>theft</c> entry to the thief's log stream for perception (#40) and the story log (#42).
+/// <c>theft</c> entry to the thief's log stream for perception (#40) and the story log (#42). <see cref="ChestLedger"/>
+/// also writes down every put and take, so the owner learns what changed in their chest.
 /// </summary>
 public static class Ownership
 {

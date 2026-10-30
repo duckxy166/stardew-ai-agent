@@ -34,7 +34,7 @@ makes every choice.
 ## 🍳 Crafting, cooking and items
 
 - Craft from known recipes, cook in the kitchen with the fridge's ingredients (`craft`, `cook`)
-- Store and take items in chests and the fridge in one call (`chest`)
+- Store and take items in chests and the fridge in one call (`chest`); see every chest on the farm with its owner and contents (`chest(action=all)`)
 - Rings, boots, hats, shirts and pants (`equip`, `wear`, `wardrobe`)
 - Look up any item: sell prices, what it restores, shops, recipes (`item_info`)
 - Eat, throw things away (valuables need confirmation), watch TV and learn recipes (`eat`, `trash`, `watch_tv`)
@@ -85,8 +85,9 @@ makes every choice.
 - Chat that only reaches farmers whose screen shows the speaker; emotes; handing over items (`say`, `emote`, `give`)
 - Each farmer sees what the others are *actually* doing next to what they last said, so lies can be caught
 - Interrupts: an @mention, a gift, someone arriving or entering your house, a theft, rain or crows stop a long action
-- Ownership: who planted a crop, who placed a chest, and a `theft` record when someone takes what isn't theirs
-- Marriage between players (`propose`, `answer_proposal`), a bedtime warning when the others wait for you
+- Ownership: who planted a crop, who placed a chest, and a `theft` record when someone takes what isn't theirs; every chest change is written down, and the owner hears what others put in or took out (in the chest's result and the morning briefing)
+- Marriage between players (`propose`, `answer_proposal`), a bedtime warning when the others wait for you; a message box left open while someone waits in bed is closed after a while
+- Co-op festivals: entering, starting and leaving wait a minute for the other farmers, tell them, then give up instead of getting stuck
 
 ## 🧠 Memory and character
 
