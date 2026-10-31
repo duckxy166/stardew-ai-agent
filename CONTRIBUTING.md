@@ -18,6 +18,14 @@ Open an issue with:
 4. Keep changes focused; match the style of the surrounding code.
 5. Describe what you changed and how you tested it.
 
+## Build
+
+```bash
+cd mod/StardewMCP
+dotnet build -c Release                                       # builds, deploys to Mods/, makes the zip
+dotnet build -p:EnableModDeploy=false -p:EnableModZip=false   # compile check only
+```
+
 ## Tests
 
 Two test suites run without Stardew Valley:
@@ -35,12 +43,35 @@ tool schemas, MCP request handling with a fake seat.
 
 When you add logic that could run without `Game1`, `GameLocation` or `Farmer`, put it in a file of its
 own that uses no game types, link that file from the test project and add a test. Keep the move small:
-leave a one-line forwarder where the old code was. Logic that does need the game is checked in game
-(and by `runner/smoke.py`).
+leave a one-line forwarder where the old code was. Logic that does need the game is checked in game.
 
-`runner/tests/` replays the synthetic transcripts, logs and diaries in `runner/samples/` through
-`run_days.py`, and reads the tool definitions out of the C# source to check their schemas. Samples must
-stay invented: no real saves, logs, paths or accounts.
+## Don't break
+
+- The HTTP API (`/api/*`, `/api/events`) and tool names: add to them, don't rename or remove. Other
+  programs drive the mod through them.
+- Another repository reads this source by path: keep `Reasons` (with `Reasons.All`) in
+  `mod/StardewMCP/Agent/ToolResult.cs` above `CallContext`, and keep tool definitions in the top-level
+  files of `mod/StardewMCP/Agent/`.
+- No game files, saves, logs or personal paths; no code copied from other mods unless their license
+  allows it (credit them if so).
+- New game features follow [docs/coverage.md](docs/coverage.md): reuse the game's own entry points and
+  update the feature's row in the same PR.
+
+## Keep the docs in step
+
+A PR that changes behaviour updates its page in the same PR:
+
+| Change | Update |
+|---|---|
+| A tool added or changed | `docs/tools.md` and `docs/tools.th.md` |
+| An endpoint, a result field or a log file | `docs/api.md` |
+| A `config.json` setting | `docs/configuration.md` |
+| Something a player would notice | `docs/features.md` and `docs/features.th.md`, plus its row in `docs/coverage.md` |
+| A new term | `CONTEXT.md` |
+
+The READMEs (`README.md` in Thai, `README.en.md` in English) stay a short landing page without reference
+tables. English and Thai pages are twins with the same sections; write the Thai as natural Thai, not word
+for word.
 
 ## Adding an agent tool
 
