@@ -33,3 +33,16 @@ jobs:
         with:
           dotnet-version: 6.0.x
       - run: dotnet test mod/StardewMCP.Tests
+
+  build:
+    name: Build the mod (self-hosted, game installed)
+    # Only a machine with Stardew Valley and SMAPI can build the mod (ModBuildConfig needs the game's DLLs, which can't be
+    # shipped to GitHub's runners). Skipped unless the repository variable STARDEW_BUILD_RUNNER is "true" and a runner
+    # labelled "stardew" is registered. Never for pull requests from forks: their code would run on that machine.
+    if: >-
+      vars.STARDEW_BUILD_RUNNER == 'true' &&
+      (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, stardew]
+    steps:
+      - uses: actions/checkout@v4
+      - run: dotnet build mod/StardewMCP -p:EnableModDeploy=false -p:EnableModZip=false

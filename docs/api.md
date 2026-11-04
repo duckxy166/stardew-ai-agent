@@ -12,7 +12,8 @@ nothing else in the mod is a public contract.
 | `/mcp`, `/mcp/p1` … `/mcp/p3` | MCP endpoints (streamable HTTP), one per farmer. `/mcp` is `/mcp/p1`. `?breaks=1` turns on [session breaks](configuration.md#long-runs) for that client |
 | `/overlay` | Live thoughts and actions; add it to OBS as a browser source (`?player=p2` for one seat, `&mock=1` for sample text without the game, `?lang=English` for the UI language) |
 | `/replay` (also `/`) | Day-by-day replay of the logs |
-| `/api/state` | Game state as JSON: every seat with its current action and thinking time, plus `saveFolder`, `paused`, `stopAfterDay`, `stopNow`. After a day that ended without `go_to_bed` (2:00 AM, health 0), `passOut` says why and `pendingJournalDay` is the day whose journal is still owed until `journal(day=N)` is written |
+| `/api/contract` | What a client can rely on: `apiVersion`, `modVersion`, every tool (`name`, `instant`, `instantFor`), every reason code, and the timing to fit client timeouts to (`maxHeldSeconds`, `thinkTimeoutSeconds`, `actionTimeoutSeconds`). See [Versions](#versions) |
+| `/api/state` | Game state as JSON (`apiVersion` first): every seat with its current action and thinking time, plus `saveFolder`, `paused`, `stopAfterDay`, `stopNow`. After a day that ended without `go_to_bed` (2:00 AM, health 0), `passOut` says why and `pendingJournalDay` is the day whose journal is still owed until `journal(day=N)` is written |
 | `/api/control` | [Run control](#run-control): `POST {"action": "pause" \| "resume" \| "stop_after_day" \| "stop_now" \| "clear_stop"}`; `GET` reads the flags |
 | `/api/feed?after=N` | The live log feed the overlay reads: state, thought language, meta and every log entry after id `N` |
 | `/api/days` | The day numbers that have a log |
@@ -87,12 +88,26 @@ the other seats add `_p2`, `_p3`:
 | `stats_NNN.json` | Daily stats, written at the day rollover |
 | `chests.jsonl` | One line per chest change, all seats in one file: `{day, time, seat, farmer, owner, action: put\|took, item, count, location, x, y}`. The same changes are `chest` entries in `day_NNN.jsonl` (args `{owner, location, tile, changes}`) |
 
+## Versions
+
+`apiVersion` (in `/api/contract` and `/api/state`) goes up when an endpoint, a result field or a timing rule changes in a
+way a client has to know about. Adding a tool or a field does not raise it. A client checks it once at startup instead of
+guessing from missing fields. The MCP `initialize` reply reports the mod's version (`manifest.json`) as `serverInfo.version`.
+
+## Browser pages
+
+Programs on this machine (scripts, MCP clients, curl) send no `Origin` header and can use everything. A page in a web
+browser can read the `GET` endpoints from anywhere (an overlay opened as a local file still works), but every `POST`, and
+anything under `/mcp` or `/api/debug`, is refused with 403 unless the page itself comes from `localhost`, `127.0.0.1`
+or `[::1]`. Without this, any web site open in the same browser could play your farmers or stop the run.
+
 ## Building on top of the mod
 
 Scripts that play many days unattended (one AI session per day, memory between days, save backups, a crash watchdog,
 OBS recording) are not part of this repository. Everything such a script needs is above: drive the farmers through
-`/mcp/pN`, read `/api/state`, `/api/briefing`, `/api/stats`, `/api/memory` and `/api/relationships`, control the run
+`/mcp/pN`, check `/api/contract`, read `/api/state`, `/api/briefing`, `/api/stats`, `/api/memory` and `/api/relationships`, control the run
 with `/api/control` and `/api/release_freeze`, and test with `/api/debug/*`. [recording.md](recording.md) and
 [howto-record-day.md](howto-record-day.md) describe one recording setup as an example.
 
-The API only grows: endpoints and tool names are added, never renamed or removed.
+The API only grows: endpoints and tool names are added, never renamed or removed. A live event stream (`/api/events`,
+#42) is planned; until it exists, follow `/api/feed?after=N`.

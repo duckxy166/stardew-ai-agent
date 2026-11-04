@@ -28,7 +28,11 @@ concerns in `mod/`. When the runner needs something new, add an HTTP endpoint or
   `currentLocation` and menus are per screen. Each seat has its own `AgentRuntime`, ticked on its
   screen; `AgentTools.Rt` is the seat of the screen being updated.
 - MCP requests arrive on the HTTP thread (`AgentHttp.cs`, localhost:8770); the seat's `AgentRuntime`
-  runs actions one at a time and instant observations in a second lane.
+  runs actions one at a time and instant observations in a second lane. The HTTP thread never touches the game:
+  it enqueues a call (with its `CallSource`) or posts work to `GameThread.Host`. A call is answered only through
+  `PendingCall.Answer`. Browser pages from other origins can't POST (`OriginPolicy.cs`).
+- State that lives as long as a save registers its reset with `GameSession.OnEnd` (ModEntry); `/api/contract`
+  (`ApiContract.cs`) is what outside programs may rely on, with `ApiVersion`.
 - Tools are `IEnumerator` coroutines defined as `ToolDef`s in the top-level `Agent/*Tools.cs` files:
   `yield return null` waits a tick, `yield return <IEnumerator>` runs a nested step. Report results
   through `CallContext` (`Result`, `Fail`). `Instant` tools only observe and keep the world frozen.
