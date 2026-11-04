@@ -453,7 +453,7 @@ public class AgentRuntime
                 text = text.TrimEnd() + "\n" + seen;
             }
 
-            // a call answered early (Perception.ReplyInTime) leaves what was heard meanwhile for the next result
+            // a call answered early (ReplyDeadline) leaves what was heard meanwhile for the next result
             var mail = call.Tool.Mail && !call.Answered ? Perception.TakeMail(_rt.Log.Player) : "";
             if (mail.Length > 0) text = text.TrimEnd() + "\n" + mail;
             if (call.Tool.AppendStatus && Context.IsWorldReady)
