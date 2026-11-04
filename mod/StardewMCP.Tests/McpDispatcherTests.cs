@@ -68,6 +68,14 @@ public class McpDispatcherTests
     }
 
     [Fact]
+    public async Task Initialize_reports_the_mods_version()
+    {
+        var mcp = new McpDispatcher(SampleTools.All(), () => true, "0.4.0");
+        var response = await Call(mcp, new FakeSeat(), "{'jsonrpc':'2.0','id':1,'method':'initialize'}");
+        Assert.Equal("0.4.0", response.GetProperty("result").GetProperty("serverInfo").GetProperty("version").GetString());
+    }
+
+    [Fact]
     public async Task Initialize_without_a_version_uses_the_fallback()
     {
         var response = await Call(NewDispatcher(), new FakeSeat(), "{'jsonrpc':'2.0','id':1,'method':'initialize'}");

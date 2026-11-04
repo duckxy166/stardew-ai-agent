@@ -50,6 +50,16 @@ public sealed class SpeechQueue<T>
         lock (_lines) return _lines.FirstOrDefault(l => l.Place == place && l.Start >= 0) is { } e ? e.Item : default;
     }
 
+    /// <summary>Forget every line, waiting or showing (the save ended).</summary>
+    public void Clear()
+    {
+        lock (_lines)
+        {
+            _lines.Clear();
+            _last = -1;
+        }
+    }
+
     /// <summary>Every line showing now, one per place.</summary>
     public List<T> AllShowing()
     {

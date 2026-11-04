@@ -40,9 +40,20 @@ public class ModEntry : Mod
         Ownership.Apply(ModManifest);
         AgentTools.Apply(ModManifest);
         string assetDir = Path.Combine(helper.DirectoryPath, "assets");
-        _http = new AgentHttp(_log, _config, Monitor, assetDir);
+        _http = new AgentHttp(_log, _config, Monitor, assetDir, ModManifest.Version.ToString());
         Brains.Init(helper, Monitor, _config, _log, assetDir);
         Hud.Init(helper, _config);
+
+        // What a closed save leaves behind, forgotten in this order when the host returns to the title screen (GameSession.cs).
+        // The built-in AIs stop first so they send nothing more; then every seat's queued and running calls are answered.
+        GameSession.OnEnd("brains", Brains.StopAll);
+        foreach (var slot in Players.Slots)
+            GameSession.OnEnd("runtime " + slot.Id, slot.Runtime.Reset);
+        GameSession.OnEnd("social", SocialTools.Reset);
+        GameSession.OnEnd("perception", Perception.Clear);
+        GameSession.OnEnd("pass-out", PassOut.OnReturnedToTitle);
+        GameSession.OnEnd("world progress", WorldProgress.Reset);
+        GameSession.OnEnd("villagers", NpcInfo.Reset);
 
         helper.Events.GameLoop.GameLaunched += (_, _) =>
         {
@@ -52,11 +63,12 @@ public class ModEntry : Mod
         helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
         helper.Events.GameLoop.ReturnedToTitle += (_, _) =>
         {
-            Brains.StopAll();
             SplitScreen.OnReturnedToTitle();
-            PassOut.OnReturnedToTitle();
-            WorldProgress.Reset();
-            NpcInfo.Reset();
+            // the save ends with the host; a farmhand screen closing on its own must not wipe the others' state
+            if (Context.ScreenId != 0)
+                return;
+            foreach (var failure in GameSession.End())
+                Monitor.Log("Closing the save: " + failure, LogLevel.Warn);
         };
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         helper.Events.GameLoop.DayStarted += (_, _) =>
@@ -93,6 +105,7 @@ public class ModEntry : Mod
         Game1.options.pauseWhenOutOfFocus = false;
         if (Context.ScreenId != 0)
             return;
+        GameSession.Begin(); // the AIs' calls are admitted again, for this save (GameSession.TryAdmit)
         NpcInfo.Reset();
         // Seat roles and split-screen may have changed in the config menu; farmhands join on later host ticks.
         Players.Resolve(_config, Monitor);
@@ -109,6 +122,7 @@ public class ModEntry : Mod
 
         if (seat.Screen == 0)
         {
+            GameThread.Host.Drain(); // work HTTP requests need done on the game thread (release_freeze)
             TryAutoLoad(e.Ticks);
             DebugApi.Tick();
             SplitScreen.HostTick();

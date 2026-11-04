@@ -4,6 +4,20 @@ using Xunit;
 public class SpeechQueueTests
 {
     [Fact]
+    public void ClearForgetsWaitingAndShowingLines()
+    {
+        var q = new SpeechQueue<string>();
+        q.Add("Farm", "hi", 3000);
+        q.Add("Farm", "hello", 3000);
+        q.Add("Town", "yo", 3000);
+        q.Advance(0, paused: false);
+        q.Clear();
+        q.Advance(10, paused: false);
+        Assert.Null(q.Showing("Farm"));
+        Assert.Empty(q.AllShowing());
+    }
+
+    [Fact]
     public void LinesInOnePlacePlayInOrder()
     {
         var q = new SpeechQueue<string>();

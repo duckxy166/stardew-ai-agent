@@ -100,6 +100,13 @@ _Avoid_: reason (that is the farmer's why)
 **Partial**:
 A result that did only part of what was asked.
 
+**Call source**:
+Who sent a tool call: the AI on the seat (MCP client or built-in AI), a program reading the API, or the test hooks.
+Only the AI's calls are held by a pause and refused by a stop.
+
+**API version**:
+The number in `/api/contract` and `/api/state` that goes up when something a client relies on changes meaning.
+
 **Loop guard**:
 The rules that hint, and finally refuse, when an AI keeps repeating a call that fails or changes nothing.
 

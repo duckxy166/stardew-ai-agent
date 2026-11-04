@@ -144,14 +144,20 @@ public static class ToolResult
     public static object McpReply(bool ok, string text, ToolOutcome? outcome)
     {
         var o = outcome ?? new ToolOutcome(ok, null, false, null);
-        var tag = Tag(o);
-        var fullText = tag.Length > 0 ? tag + " " + text : text;
+        var fullText = TaggedText(ok, text, outcome);
         return new
         {
             content = new[] { new { type = "text", text = fullText } },
             isError = !o.Ok,
             structuredContent = Structured(o, fullText)
         };
+    }
+
+    /// <summary>The text an AI reads for a result: the tag ("[partial · no_path]") in front, if any. MCP clients and the built-in AI get the same.</summary>
+    public static string TaggedText(bool ok, string text, ToolOutcome? outcome)
+    {
+        var tag = Tag(outcome ?? new ToolOutcome(ok, null, false, null));
+        return tag.Length > 0 ? tag + " " + text : text;
     }
 
     /// <summary>A reply for a call that never reached a tool (unknown tool, seat not in the game).</summary>

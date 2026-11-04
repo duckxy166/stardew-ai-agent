@@ -36,7 +36,10 @@ pip install pytest && python -m pytest -q mod/tests                 # Python: to
 ```
 
 The mod project itself needs the game's DLLs (ModBuildConfig finds them in your game folder), so it
-can't be built on CI or on a machine without the game. `mod/StardewMCP.Tests` therefore does **not**
+can't be built on GitHub's runners or on a machine without the game. CI builds it only on a self-hosted runner: register
+one labelled `stardew` on a machine with the game and SMAPI and set the repository variable `STARDEW_BUILD_RUNNER` to
+`true`; until then that job is skipped. It runs for pushes and for pull requests from branches of this repository, never
+for forks (a fork's code would run on your machine). `mod/StardewMCP.Tests` therefore does **not**
 reference it. It compiles the mod's game-free source files directly (see the `<Compile Include=...>`
 list in its `.csproj`) and tests them: route search on text maps, tool argument helpers, the rules for
 tool schemas, MCP request handling with a fake seat.
@@ -47,15 +50,30 @@ leave a one-line forwarder where the old code was. Logic that does need the game
 
 ## Don't break
 
-- The HTTP API (`/api/*`, `/api/events`) and tool names: add to them, don't rename or remove. Other
-  programs drive the mod through them.
-- Another repository reads this source by path: keep `Reasons` (with `Reasons.All`) in
+- The HTTP API (`/api/*`) and tool names: add to them, don't rename or remove. Other
+  programs drive the mod through them. A change a client has to know about (a field's meaning, a timing rule) raises
+  `ApiContract.ApiVersion` and gets a line in [docs/api.md](docs/api.md#versions).
+- Another repository reads this source by path (moving to `/api/contract`, but keep it working until then): keep `Reasons` (with `Reasons.All`) in
   `mod/StardewMCP/Agent/ToolResult.cs` above `CallContext`, and keep tool definitions in the top-level
   files of `mod/StardewMCP/Agent/`.
 - No game files, saves, logs or personal paths; no code copied from other mods unless their license
   allows it (credit them if so).
 - New game features follow [docs/coverage.md](docs/coverage.md): reuse the game's own entry points and
   update the feature's row in the same PR.
+
+## How the mod is put together
+
+- **Game thread only.** Everything that touches the game runs on a screen's `UpdateTicked`. An HTTP request reaches the
+  game either as a tool call (`AgentRuntime.Enqueue(tool, args, CallSource.X)`) or as work posted to
+  `GameThread.Host.Run(...)`; it never reads `Game1` itself. The request thread only reads snapshots (`StateJson`).
+- **One answer per call.** A `PendingCall` is answered through `PendingCall.Answer(...)` only, by whoever ends it
+  (its lane, run control, `ReplyDeadline`); never complete `Done` directly.
+- **Who called.** `CallSource` says whether a call came from the AI (`Agent`, `Brain`), from a program reading the API
+  (`Runner`) or from the test hooks (`Debug`); run control holds and refuses only the AI's calls.
+- **State that belongs to a save** (queues, inboxes, per-seat counters kept in static fields) registers its reset with
+  `GameSession.OnEnd(name, reset)` in `ModEntry`, so the next save starts clean. An AI's call is admitted only while a
+  save is open (`GameSession.TryAdmit`) and is dropped if that save closes before the call starts.
+- **Browser pages** may read but not change anything (`OriginPolicy`).
 
 ## Keep the docs in step
 

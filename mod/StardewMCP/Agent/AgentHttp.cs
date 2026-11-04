@@ -17,6 +17,7 @@ namespace StardewMCP.Agent;
 ///                    POST /mcp is p1 (single-player runs); add ?breaks=1 to get planned session breaks (SessionBreaks.cs)
 ///   GET  /overlay    OBS browser-source overlay (Thai thoughts + actions)
 ///   GET  /replay     day-by-day replay of the logs
+///   GET  /api/contract  API version, mod version, tool names, reason codes and timing (ApiContract.cs)
 ///   GET  /api/feed   overlay feed, /api/days, /api/day?n=, /api/state
 ///   GET  /api/memory each AI seat's lessons, plan and notes (what the journal tool wrote)
 ///   GET  /api/briefing?seat=p1  morning briefing of one AI seat (JSON; see Briefing.cs)
@@ -27,6 +28,8 @@ namespace StardewMCP.Agent;
 ///                    passes out; ends by itself on the next farm day (#22)
 ///   GET/POST /api/control   run control: pause, resume, stop_after_day, stop_now, clear_stop
 ///   POST /api/debug/{op}, /api/debug/p{N}/{op}   smoke-test hooks (EnableDebugApi only)
+/// A browser page from another origin may read but never POST (OriginPolicy.cs). Work that needs game state runs on the
+/// game thread: tool calls through the seat's runtime, the rest through <see cref="GameThread"/>.
 /// </summary>
 public class AgentHttp
 {
@@ -34,6 +37,7 @@ public class AgentHttp
     private readonly ModConfig _config;
     private readonly IMonitor _monitor;
     private readonly string _assetDir;
+    private readonly string _modVersion;
     private readonly Dictionary<string, ToolDef> _tools;
     private readonly Dictionary<string, ToolDef> _debug = DebugApi.All();
     private HttpListener? _listener;
@@ -46,14 +50,15 @@ public class AgentHttp
     // blocked, so runner/game_watchdog.py reads this "heartbeat" to tell a live game from a hung one.
     private long _beat;
 
-    public AgentHttp(AgentLog log, ModConfig config, IMonitor monitor, string assetDir)
+    public AgentHttp(AgentLog log, ModConfig config, IMonitor monitor, string assetDir, string modVersion)
     {
         _log = log;
         _config = config;
         _monitor = monitor;
         _assetDir = assetDir;
+        _modVersion = modVersion;
         _tools = AgentTools.All().ToDictionary(t => t.Name);
-        _mcp = new McpDispatcher(_tools, () => _config.SplitScreen);
+        _mcp = new McpDispatcher(_tools, () => _config.SplitScreen, modVersion);
         foreach (var problem in ToolContract.Check(_tools.Values))
             _monitor.Log("Tool contract: " + problem, LogLevel.Warn);
     }
@@ -103,6 +108,13 @@ public class AgentHttp
         try
         {
             var path = req.Url?.AbsolutePath.TrimEnd('/') ?? "";
+            if (!OriginPolicy.Allows(req.HttpMethod, path, req.Headers["Origin"]))
+            {
+                _monitor.LogOnce($"Refused {req.HttpMethod} {path} from the web page {req.Headers["Origin"]}: only programs on this machine may change the game.", LogLevel.Warn);
+                res.StatusCode = 403;
+                res.Close();
+                return;
+            }
             if (path.StartsWith("/api/debug/"))
             {
                 var rest = path.Substring("/api/debug/".Length);
@@ -150,6 +162,10 @@ public class AgentHttp
                     return;
                 case "/api/state":
                     await Text(res, StateJson, "application/json");
+                    return;
+                case "/api/contract":
+                    await Json(res, ApiContract.Build(_modVersion, _tools.Values, Reasons.All,
+                        new ApiContract.Timing(RunControl.MaxHeldSeconds, _config.ThinkTimeoutSeconds, ApiContract.ActionTimeoutSeconds)));
                     return;
                 case "/api/briefing":
                     var (briefStatus, briefBody) = await Briefing.Serve(req.QueryString["seat"], _config.SplitScreen);
@@ -248,20 +264,31 @@ public class AgentHttp
             await Json(res, new { ok = false, text = $"Unknown seat \"{who}\"; use p1, p2, p3 or all" });
             return;
         }
-        if (!Context.IsWorldReady)
+        object answer;
+        try
         {
-            await Json(res, new { ok = false, text = "The game world is not loaded" });
+            // reads the loaded world and the farm day: done on the game thread, between two ticks
+            answer = await GameThread.Host.Run<object>(() =>
+            {
+                if (!Context.IsWorldReady)
+                    return new { ok = false, text = "The game world is not loaded" };
+                foreach (var seat in seats)
+                {
+                    seat.SetReleased(on);
+                    seat.Runtime.Log.Add("system", text: on
+                        ? $"Freeze released for {seat.Id}: game time runs on until the farmer passes out or the AI acts again"
+                        : $"Freeze release for {seat.Id} taken back");
+                }
+                return new { ok = true, released = on, seats = seats.Select(s => s.Id).ToArray(), day = AgentLog.FarmDay };
+            }, TimeSpan.FromSeconds(10));
+        }
+        catch (TimeoutException)
+        {
+            res.StatusCode = 503;
+            await Json(res, new { ok = false, text = "The game loop did not answer within 10 s (loading, or hung)" });
             return;
         }
-
-        foreach (var seat in seats)
-        {
-            seat.SetReleased(on);
-            seat.Runtime.Log.Add("system", text: on
-                ? $"Freeze released for {seat.Id}: game time runs on until the farmer passes out or the AI acts again"
-                : $"Freeze release for {seat.Id} taken back");
-        }
-        await Json(res, new { ok = true, released = on, seats = seats.Select(s => s.Id), day = AgentLog.FarmDay });
+        await Json(res, answer);
     }
 
     // ------------------------------------------------------------------ debug (smoke tests)
@@ -297,7 +324,7 @@ public class AgentHttp
             await Json(res, new { ok = false, text = $"{seat.Id} is not in the game" });
             return;
         }
-        var (ok, text) = await seat.Runtime.Enqueue(tool, args);
+        var (ok, text) = await seat.Runtime.Enqueue(tool, args, CallSource.Debug);
         await Json(res, new { ok, text });
     }
 
@@ -371,13 +398,14 @@ public class AgentHttp
 
         if (!Context.IsWorldReady)
         {
-            StateJson = JsonSerializer.Serialize(new { ready = false, heartbeat = ++_beat, frozen = WorldClock.Frozen, players }, AgentLog.Json);
+            StateJson = JsonSerializer.Serialize(new { apiVersion = ApiContract.ApiVersion, ready = false, heartbeat = ++_beat, frozen = WorldClock.Frozen, players }, AgentLog.Json);
             return;
         }
         var p = Game1.player;
         var hostPass = PassOut.View(Players.Host.Id);
         StateJson = JsonSerializer.Serialize(new
         {
+            apiVersion = ApiContract.ApiVersion,
             ready = true,
             heartbeat = ++_beat,
             saveFolder = SaveFolder.Name,

@@ -10,19 +10,56 @@ using StardewValley;
 
 namespace StardewMCP.Agent;
 
-/// <summary>A tool call waiting for (or running on) the game thread.</summary>
+/// <summary>Who sent a tool call. Decides its lane and whether run control may hold or refuse it.</summary>
+public enum CallSource
+{
+    /// <summary>The smoke-test hooks (<c>/api/debug/*</c>): always the action lane, never held or refused by run control.</summary>
+    Debug,
+    /// <summary>An MCP client on the seat's endpoint (<c>/mcp/pN</c>).</summary>
+    Agent,
+    /// <summary>The mod's built-in AI for the seat (Agent/Brain).</summary>
+    Brain,
+    /// <summary>A program reading through the HTTP API on the seat's screen (/api/briefing, /api/relationships): not the AI.</summary>
+    Runner
+}
+
+/// <summary>
+/// A tool call waiting for (or running on) the game thread. Its life: queued, running (<see cref="AgentRuntime.CurrentCall"/>),
+/// answered. The answer goes out once, through <see cref="Answer"/>, from whoever ends it: the lane when the coroutine finishes,
+/// run control or a client deadline when it never started, <see cref="ReplyDeadline"/> when a sleeper is answered early
+/// while go_to_bed keeps running. A running call that was answered early still finishes in its lane, but its later result
+/// only goes to the log.
+/// </summary>
 public class PendingCall
 {
     public ToolDef Tool = null!;
     public JsonElement Args;
     /// <summary>Observes only: keeps the world frozen and may answer during the seat's own action.</summary>
     public bool Instant;
-    /// <summary>Came in through an AI's MCP endpoint (not the debug API): <see cref="RunControl"/> pauses and refuses these.</summary>
-    public bool FromAgent;
+    public CallSource Source;
+    /// <summary>The save (<see cref="GameSession.Generation"/>) an AI's call was admitted for; a call of an earlier one is dropped.</summary>
+    public int Generation;
+    /// <summary>Sent by the AI playing the seat (MCP client or built-in brain): <see cref="RunControl"/> holds and refuses these.</summary>
+    public bool FromAgent => Source is CallSource.Agent or CallSource.Brain;
     public DateTime Queued = DateTime.UtcNow;
+    /// <summary>Completes with the answer. Await it; complete it only through <see cref="Answer"/>.</summary>
     public TaskCompletionSource<(bool ok, string text)> Done = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    /// <summary>Reason code, partial flag and counts of the finished call; set just before <see cref="Done"/> completes.</summary>
-    public ToolOutcome? Outcome;
+    /// <summary>Reason code, partial flag and counts of the answer; set together with it by <see cref="Answer"/>.</summary>
+    public ToolOutcome? Outcome { get; private set; }
+
+    /// <summary>The caller has its answer (the call may still be running, see the class summary).</summary>
+    public bool Answered => Done.Task.IsCompleted;
+
+    /// <summary>Give the caller its answer. Only the first answer counts; false when the call was answered already.</summary>
+    public bool Answer(bool ok, string text, ToolOutcome outcome)
+    {
+        lock (Done)
+        {
+            if (Done.Task.IsCompleted) return false;
+            Outcome = outcome; // before the task completes: the awaiting side reads it right after
+            return Done.TrySetResult((ok, text));
+        }
+    }
 }
 
 /// <summary>
@@ -54,10 +91,10 @@ public class AgentRuntime
     public IModHelper Helper { get; }
 
     /// <summary>Heart events this seat plays instead of skipping them, and friendship milestones (NpcStory.cs).</summary>
-    public StoryWatcher Story { get; } = new();
+    public StoryWatcher Story { get; private set; } = new();
 
     /// <summary>Stuck/loop detector for this seat's calls: repeated failures, no progress. Hints per day: <c>Guard.HintsToday</c>. See LoopGuard.cs.</summary>
-    public LoopGuard Guard { get; }
+    public LoopGuard Guard { get; private set; }
 
     /// <summary>What the farmer walked past during the running action (forage, spots to dig...). See <see cref="Sightings"/>.</summary>
     public SightLog Sights { get; } = new();
@@ -93,24 +130,57 @@ public class AgentRuntime
     }
 
     /// <summary>
-    /// Queue a call. With <paramref name="observation"/>, tools marked <see cref="ToolDef.Instant"/>
-    /// go to the observation lane; everything else, including debug ops, waits its turn in the action lane.
+    /// Queue a call. Tools marked <see cref="ToolDef.Instant"/> go to the observation lane (they answer even during the
+    /// seat's own action), except debug ops: those and everything else wait their turn in the action lane.
     /// </summary>
-    public Task<(bool ok, string text)> Enqueue(ToolDef tool, JsonElement args, bool observation = false) =>
-        EnqueueCall(tool, args, observation).Done.Task;
+    public Task<(bool ok, string text)> Enqueue(ToolDef tool, JsonElement args, CallSource source) =>
+        EnqueueCall(tool, args, source).Done.Task;
 
     /// <summary>Like <see cref="Enqueue"/>, but returns the call so the caller can read its <see cref="PendingCall.Outcome"/> after <see cref="PendingCall.Done"/>.</summary>
-    public PendingCall EnqueueCall(ToolDef tool, JsonElement args, bool observation = false)
+    public PendingCall EnqueueCall(ToolDef tool, JsonElement args, CallSource source)
     {
-        var call = new PendingCall { Tool = tool, Args = args, Instant = tool.Instant || tool.InstantFor?.Invoke(args) == true, FromAgent = observation };
-        if (observation && RunControl.StopNow)
+        var call = new PendingCall { Tool = tool, Args = args, Instant = tool.Instant || tool.InstantFor?.Invoke(args) == true, Source = source };
+        if (call.FromAgent && RunControl.StopNow)
         {
-            call.Outcome = new ToolOutcome(false, Reasons.Interrupted, false, null);
-            call.Done.TrySetResult((false, RunControl.StopMessage));
+            call.Answer(false, RunControl.StopMessage, new ToolOutcome(false, Reasons.Interrupted, false, null));
             return call;
         }
-        (observation && call.Instant ? _observations : _actions).Enqueue(call);
+        if (call.FromAgent)
+        {
+            if (!GameSession.TryAdmit(out var generation))
+            {
+                call.Answer(false, NoSaveText, new ToolOutcome(false, Reasons.NotReady, false, null));
+                return call;
+            }
+            call.Generation = generation;
+        }
+        (source != CallSource.Debug && call.Instant ? _observations : _actions).Enqueue(call);
         return call;
+    }
+
+    /// <summary>
+    /// The save ended (<see cref="GameSession"/>): answer every waiting and running call so no HTTP request or brain waits on a
+    /// farmer that is gone, and forget this seat's per-save memory (loop guard, heart events, sightings, profession offers).
+    /// Game thread. The runtime itself stays: seats keep theirs for the next save.
+    /// </summary>
+    private const string NoSaveText = "No save is loaded (title screen or loading). Wait until the game is loaded, then try again.";
+
+    public void Reset()
+    {
+        const string text = "The save was closed (back to the title screen). Wait until the game is loaded again.";
+        var outcome = new ToolOutcome(false, Reasons.NotReady, false, null);
+        _actionLane.Abort(text, outcome);
+        _observeLane.Abort(text, outcome);
+        foreach (var q in new[] { _actions, _observations })
+            while (q.TryDequeue(out var call))
+                call.Answer(false, text, outcome);
+        Guard = new LoopGuard(Config, Log, _monitor);
+        Story = new StoryWatcher();
+        Sights.Clear();
+        PendingProfessions.Clear();
+        PendingProfessionDay = 0;
+        EarlyBedDay = 0;
+        _eventTicks = 0;
     }
 
     /// <summary>
@@ -122,10 +192,9 @@ public class AgentRuntime
         int n = 0;
         foreach (var call in _actions)
         {
-            if (!call.FromAgent || call.Done.Task.IsCompleted || (DateTime.UtcNow - call.Queued).TotalSeconds < olderThanSeconds)
+            if (!call.FromAgent || call.Answered || (DateTime.UtcNow - call.Queued).TotalSeconds < olderThanSeconds)
                 continue;
-            call.Outcome = new ToolOutcome(false, Reasons.NotReady, false, null);
-            if (call.Done.TrySetResult((false, text))) n++;
+            if (call.Answer(false, text, new ToolOutcome(false, Reasons.NotReady, false, null))) n++;
         }
         return n;
     }
@@ -139,6 +208,7 @@ public class AgentRuntime
         QuestEvents.Tick(this);
         AgentTools.FishingTick(this); // plays an open fishing minigame while this seat runs the fish tool
         SocialTools.Tick(Log.Player);
+        ReplyDeadline.Tick(this); // the client's own deadline first, as when it was part of Perception
         Perception.Tick(this);
         Story.Tick(this);
         WorldProgress.Tick(this);
@@ -226,11 +296,18 @@ public class AgentRuntime
         {
             if (Current == null && !RunControl.ShouldHold(queue))
                 while (queue.TryDequeue(out var next))
-                    if (!next.Done.Task.IsCompleted) // answered while it waited (AnswerQueued): dropped
+                {
+                    if (next.Answered) // answered while it waited (AnswerQueued, run control): dropped
+                        continue;
+                    if (next.FromAgent && next.Generation != GameSession.Generation)
                     {
-                        Start(next);
-                        break;
+                        // admitted for a save that has closed since (it slipped in while the reset drained the queue)
+                        next.Answer(false, NoSaveText, new ToolOutcome(false, Reasons.NotReady, false, null));
+                        continue;
                     }
+                    Start(next);
+                    break;
+                }
             if (Current != null)
                 Step();
         }
@@ -360,6 +437,21 @@ public class AgentRuntime
             return true;
         }
 
+        /// <summary>Drop the running call without a result (the save ended): its coroutines are disposed, the caller gets <paramref name="text"/>.</summary>
+        public void Abort(string text, ToolOutcome outcome)
+        {
+            if (Current == null) return;
+            var call = Current;
+            while (_stack.Count > 0)
+            {
+                try { (_stack.Pop() as IDisposable)?.Dispose(); }
+                catch (Exception ex) { _rt._monitor.Log($"Tool {call.Tool.Name} failed while being dropped: {ex.Message}", LogLevel.Warn); }
+            }
+            Current = null;
+            _ctx = null;
+            call.Answer(false, text, outcome);
+        }
+
         private void Finish()
         {
             var call = Current!;
@@ -381,8 +473,8 @@ public class AgentRuntime
                 text = text.TrimEnd() + "\n" + seen;
             }
 
-            // a call answered early (Perception.ReplyInTime) leaves what was heard meanwhile for the next result
-            var mail = call.Tool.Mail && !call.Done.Task.IsCompleted ? Perception.TakeMail(_rt.Log.Player) : "";
+            // a call answered early (ReplyDeadline) leaves what was heard meanwhile for the next result
+            var mail = call.Tool.Mail && !call.Answered ? Perception.TakeMail(_rt.Log.Player) : "";
             if (mail.Length > 0) text = text.TrimEnd() + "\n" + mail;
             if (call.Tool.AppendStatus && Context.IsWorldReady)
                 text = text.TrimEnd() + "\n" + Observation.OneLine(AgentTools.Footer()); // one line, however many menus are open
@@ -393,8 +485,7 @@ public class AgentRuntime
             if (!call.Instant || !ctx.Ok)
                 _rt.Log.Add("result", call.Tool.Name, ctx.Result, ok: ctx.Ok, ms: _watch.ElapsedMilliseconds, outcome: outcome);
 
-            call.Outcome = outcome;
-            call.Done.TrySetResult((ctx.Ok, text));
+            call.Answer(ctx.Ok, text, outcome); // false when it was answered early: then this result only went to the log
         }
     }
 }
