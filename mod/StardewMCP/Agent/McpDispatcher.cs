@@ -45,14 +45,19 @@ public class McpDispatcher
 
     private readonly IReadOnlyDictionary<string, ToolDef> _tools;
     private readonly Func<bool> _splitScreen;
+    private readonly string _serverVersion;
 
     public McpDispatcher(IReadOnlyDictionary<string, ToolDef> tools, bool splitScreen) : this(tools, () => splitScreen) { }
 
-    /// <summary><paramref name="splitScreen"/> is read on each initialize, so a config change applies to the next session.</summary>
-    public McpDispatcher(IReadOnlyDictionary<string, ToolDef> tools, Func<bool> splitScreen)
+    /// <summary>
+    /// <paramref name="splitScreen"/> is read on each initialize, so a config change applies to the next session.
+    /// <paramref name="serverVersion"/> is the mod's version (manifest.json), reported as serverInfo.version.
+    /// </summary>
+    public McpDispatcher(IReadOnlyDictionary<string, ToolDef> tools, Func<bool> splitScreen, string serverVersion = "0.0.0")
     {
         _tools = tools;
         _splitScreen = splitScreen;
+        _serverVersion = serverVersion;
     }
 
     /// <summary>
@@ -94,7 +99,7 @@ public class McpDispatcher
                 {
                     protocolVersion = ver ?? ProtocolFallback,
                     capabilities = new { tools = new { listChanged = false } },
-                    serverInfo = new { name = "stardew", version = "2.0.0" },
+                    serverInfo = new { name = "stardew", version = _serverVersion },
                     instructions = _splitScreen()
                         ? "You live on a shared Stardew Valley farm with other newcomers. The whole world is frozen while you or another player is thinking, and only moves while actions run."
                         : "You are playing Stardew Valley. Game time is frozen while you think and only moves while an action runs."

@@ -318,18 +318,8 @@ public sealed class SeatBrain
 
         _slot.MarkContact();
         Status = tool.Name;
-        var pending = _slot.Runtime.EnqueueCall(tool, args, observation: true);
+        var pending = _slot.Runtime.EnqueueCall(tool, args, CallSource.Brain);
         var (ok, text) = await pending.Done.Task.WaitAsync(ct);
-
-        // The same text an MCP client gets: the [partial · reason] / [no_path] tag in front, if any.
-        try
-        {
-            var reply = JsonSerializer.SerializeToElement(ToolResult.McpReply(ok, text, pending.Outcome), AgentLog.Json);
-            if (reply.TryGetProperty("content", out var content) && content.GetArrayLength() > 0 &&
-                content[0].TryGetProperty("text", out var t) && t.GetString() is { } tagged)
-                text = tagged;
-        }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException) { }
-        return (ok, text);
+        return (ok, ToolResult.TaggedText(ok, text, pending.Outcome)); // the same text an MCP client gets
     }
 }

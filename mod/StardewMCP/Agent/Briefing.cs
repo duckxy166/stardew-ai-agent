@@ -251,7 +251,7 @@ public static class Briefing
         if (!seat.Active)
             return (200, NotReady(seat.Id, "the seat is not in the game yet"));
 
-        var (ok, text) = await seat.Runtime.Enqueue(Tool, JsonDocument.Parse("{}").RootElement, observation: true);
+        var (ok, text) = await seat.Runtime.Enqueue(Tool, JsonDocument.Parse("{}").RootElement, CallSource.Runner);
         return (200, ok ? text : NotReady(seat.Id, text));
     }
 

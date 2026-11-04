@@ -38,6 +38,14 @@ public static class SocialTools
     }
     private const int BubbleChars = 20, BubbleLines = 3, BubbleLineHeight = 60; // a line covers the tail of the one above it
 
+    /// <summary>The save ended (<see cref="GameSession"/>): chat not yet read, gifts in flight (items of that save) and said lines go with it.</summary>
+    public static void Reset()
+    {
+        Inbox.Clear();
+        Gifts.Clear();
+        Speech.Clear();
+    }
+
     public static void Apply(IManifest manifest)
     {
         new Harmony(manifest.UniqueID + ".social").Patch(AccessTools.Method(typeof(Farmer), nameof(Farmer.draw), new[] { typeof(SpriteBatch) }),

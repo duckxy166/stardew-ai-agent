@@ -327,7 +327,7 @@ public static class NpcStory
         var op = AgentTools.RelationshipsOp();
         var pending = Players.Slots
             .Where(s => s.Role == SeatRole.Ai && s.Active)
-            .Select(s => s.Runtime.Enqueue(op, default, observation: true))
+            .Select(s => s.Runtime.Enqueue(op, default, CallSource.Runner))
             .ToList();
         if (pending.Count > 0)
             await Task.WhenAny(Task.WhenAll(pending), Task.Delay(5000));

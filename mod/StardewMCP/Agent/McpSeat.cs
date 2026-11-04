@@ -17,11 +17,11 @@ internal sealed class McpSeat : IMcpSeat
     public void MarkContact() => _slot.MarkContact();
 
     public Task<(bool ok, string text)> CallTool(ToolDef tool, JsonElement args) =>
-        _slot.Runtime.Enqueue(tool, args, observation: true);
+        _slot.Runtime.Enqueue(tool, args, CallSource.Agent);
 
     public async Task<object> CallToolReply(ToolDef tool, JsonElement args)
     {
-        var call = _slot.Runtime.EnqueueCall(tool, args, observation: true);
+        var call = _slot.Runtime.EnqueueCall(tool, args, CallSource.Agent);
         var (ok, text) = await call.Done.Task;
         return ToolResult.McpReply(ok, text, call.Outcome);
     }

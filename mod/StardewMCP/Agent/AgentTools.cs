@@ -1304,7 +1304,7 @@ public static partial class AgentTools
                 }
                 // A question or a naming box in the night (a child): hand it to the AI instead of waiting on it (#53). An AI already
                 // told its day is over (Perception.ReplyInTime) has gone and can't answer: the night answers for it.
-                if (t > 30 && Rt.CurrentCall?.Done.Task.IsCompleted == true)
+                if (t > 30 && Rt.CurrentCall?.Answered == true)
                     AnswerNightAlone(Rt, t);
                 else if (t > 30 && (Romance.NightQuestion(c, Rt, t) || Naming.NightPrompt(c)))
                     yield break;

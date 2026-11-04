@@ -271,8 +271,7 @@ public static class Perception
             SampleWeather(seat);
             SampleCrows(seat);
         }
-        ReplyInTime(seat, rt);
-        TryInterrupt(seat, rt);
+        TryInterrupt(seat, rt); // a client deadline (reply_within) is ReplyDeadline's job, ticked just before this
     }
 
     /// <summary>A different save (the smoke runner's copy, then the real one) starts from a clean slate.</summary>
@@ -404,7 +403,7 @@ public static class Perception
     // ------------------------------------------------------------------ interrupting
 
     /// <summary>In bed waiting for the others: the sleep ready check is open and still cancelable (not once the night began).</summary>
-    private static bool Asleep(PendingCall call, AgentRuntime rt) =>
+    internal static bool Asleep(PendingCall call, AgentRuntime rt) =>
         call.Tool.Name == "go_to_bed" && !rt.WakingUp &&
         Game1.activeClickableMenu is StardewValley.Menus.ReadyCheckDialog { checkName: "sleep" } check && check.isCancelable();
 
@@ -414,7 +413,7 @@ public static class Perception
     /// everything else only while its farmer walks between two steps of the job, on a tile of its own. go_to_bed's walk home is
     /// stopped only for a client deadline (<paramref name="bedWalk"/>), never by an event.
     /// </summary>
-    private static bool SafeToStop(PendingCall call, bool asleep, bool bedWalk = false)
+    internal static bool SafeToStop(PendingCall call, bool asleep, bool bedWalk = false)
     {
         var name = call.Tool.Name;
         if (!Stoppable.Contains(name) || (name == "go_to_bed" && !asleep && !bedWalk)) return false;
@@ -428,7 +427,7 @@ public static class Perception
     }
 
     /// <summary>Halt the farmer's walk and end its running action with <paramref name="text"/> as the result.</summary>
-    private static bool Stop(AgentRuntime rt, string text)
+    internal static bool Stop(AgentRuntime rt, string text)
     {
         var p = Game1.player;
         if (p.controller != null)
@@ -439,54 +438,18 @@ public static class Perception
         return rt.Interrupt(text);
     }
 
-    private static string Where() => $"{Game1.currentLocation?.Name} ({Game1.player.TilePoint.X},{Game1.player.TilePoint.Y})";
-
-    /// <summary>
-    /// A client that gives up on a call after a few minutes (agy: 3, 2026-10-20) is answered before that. A sleeper is told
-    /// its day is over while go_to_bed keeps running, so it stays in bed; any other action stops at its next safe point;
-    /// a call that never started (behind another action, or held by a pause) is answered and dropped.
-    /// </summary>
-    private static void ReplyInTime(PlayerSlot seat, AgentRuntime rt)
-    {
-        int limit = seat.ReplyWithinSeconds;
-        if (limit <= 0) return;
-        var call = rt.CurrentCall;
-        if (call is { Instant: false, Tool.Name: "go_to_bed" } && call.Done.Task.IsCompleted && !rt.WakingUp)
-        {
-            // told its day is over, the client went on anyway: those calls would otherwise run on tomorrow's farmer
-            if (rt.AnswerQueued("You are asleep in bed and your day is over: the night begins when everyone is in bed. Stop here.") > 0)
-                rt.Log.Add("system", text: "Refused a call sent after go_to_bed was answered: asleep");
-        }
-        else if (rt.AnswerQueued(RunControl.Holding ? "The game is paused, so this call never started. Call it again."
-                                     : $"This call never started: your {rt.CurrentTool ?? "earlier action"} was still running. Call it again.",
-                                 limit) > 0)
-            rt.Log.Add("system", text: $"Answered calls that waited {limit}s without starting");
-
-        if (call == null || call.Instant || call.Done.Task.IsCompleted || (DateTime.UtcNow - call.Queued).TotalSeconds < limit) return;
-        if (Asleep(call, rt))
-        {
-            call.Done.TrySetResult((true, "You are asleep in bed, waiting for the others to go to bed too; the night begins " +
-                                          "when everyone is in bed. Your day is over: stop here."));
-            rt.Log.Add("system", text: "Answered go_to_bed early: asleep, waiting for the others");
-            return;
-        }
-        if (!SafeToStop(call, asleep: false, bedWalk: true)) return; // runs to its end; the 6-minute action timeout still applies
-        var where = Where();
-        if (Stop(rt, $"Paused: your {call.Tool.Name} ran long and was stopped at {where} at {WorldText.FormatTime(Game1.timeOfDay)}; " +
-                     "nothing happened to you. Call it again to go on, or decide something else."))
-            rt.Log.Add("interrupt", call.Tool.Name, "reply_within", args: new { seconds = limit });
-    }
+    internal static string Where() => $"{Game1.currentLocation?.Name} ({Game1.player.TilePoint.X},{Game1.player.TilePoint.Y})";
 
     /// <summary>
     /// Stop the seat's running walk, wait or farm action when it has unseen events (see <see cref="SafeToStop"/>). A call
-    /// already answered (<see cref="ReplyInTime"/>) runs to its end: nobody is left to read why it stopped.
+    /// already answered (<see cref="ReplyDeadline"/>) runs to its end: nobody is left to read why it stopped.
     /// </summary>
     private static void TryInterrupt(PlayerSlot seat, AgentRuntime rt)
     {
         var q = Queues[seat.Screen];
         if (!Interrupts || q.IsEmpty) return;
         var call = rt.CurrentCall;
-        if (call == null || call.Instant || call.Done.Task.IsCompleted) return;
+        if (call == null || call.Instant || call.Answered) return;
         // in bed waiting for the others: the sleep ready check is open and still cancelable (not once the night began)
         bool asleep = Asleep(call, rt);
         if (!SafeToStop(call, asleep)) return;
