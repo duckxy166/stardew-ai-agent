@@ -71,7 +71,8 @@ leave a one-line forwarder where the old code was. Logic that does need the game
 - **Who called.** `CallSource` says whether a call came from the AI (`Agent`, `Brain`), from a program reading the API
   (`Runner`) or from the test hooks (`Debug`); run control holds and refuses only the AI's calls.
 - **State that belongs to a save** (queues, inboxes, per-seat counters kept in static fields) registers its reset with
-  `GameSession.OnEnd(name, reset)` in `ModEntry`, so the next save starts clean.
+  `GameSession.OnEnd(name, reset)` in `ModEntry`, so the next save starts clean. An AI's call is admitted only while a
+  save is open (`GameSession.TryAdmit`) and is dropped if that save closes before the call starts.
 - **Browser pages** may read but not change anything (`OriginPolicy`).
 
 ## Keep the docs in step

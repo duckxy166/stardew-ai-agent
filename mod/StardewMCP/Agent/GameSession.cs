@@ -14,9 +14,40 @@ public static class GameSession
 {
     private static readonly List<(string Name, Action Reset)> Resets = new();
     private static readonly object Lock = new();
+    private static int _generation;
+    private static bool _open;
 
     /// <summary>Times <see cref="End"/> ran; lets threads off the game loop notice that the save they started on is gone.</summary>
-    public static int Generation { get; private set; }
+    public static int Generation
+    {
+        get { lock (Lock) return _generation; }
+    }
+
+    /// <summary>A save is loaded: between <see cref="Begin"/> (host SaveLoaded) and <see cref="End"/>.</summary>
+    public static bool Open
+    {
+        get { lock (Lock) return _open; }
+    }
+
+    /// <summary>The host loaded a save: the AI's calls are admitted again (<see cref="TryAdmit"/>).</summary>
+    public static void Begin()
+    {
+        lock (Lock) _open = true;
+    }
+
+    /// <summary>
+    /// May an AI's call be queued now, and for which save? False while no save is open. A call admitted just before
+    /// <see cref="End"/> carries the old <paramref name="generation"/>, so the runtime can drop it instead of running it on
+    /// the next save (an MCP batch goes on after its first call was answered by the reset, 2026-11 review).
+    /// </summary>
+    public static bool TryAdmit(out int generation)
+    {
+        lock (Lock)
+        {
+            generation = _generation;
+            return _open;
+        }
+    }
 
     /// <summary>
     /// Register <paramref name="reset"/> under <paramref name="name"/>; registering a name again replaces it. Resets run in
@@ -42,7 +73,8 @@ public static class GameSession
         lock (Lock)
         {
             resets = Resets.ToArray();
-            Generation++;
+            _generation++; // before the resets drain the queues: anything admitted earlier is stale from here on
+            _open = false;
         }
         var failures = new List<string>();
         foreach (var (name, reset) in resets)

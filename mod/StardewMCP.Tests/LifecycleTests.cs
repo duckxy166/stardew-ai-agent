@@ -125,6 +125,24 @@ public class GameSessionTests
     }
 
     [Fact]
+    public void Calls_are_admitted_only_while_a_save_is_open_and_carry_its_generation()
+    {
+        GameSession.Begin();
+        Assert.True(GameSession.TryAdmit(out int before));
+        Assert.Equal(GameSession.Generation, before);
+
+        GameSession.End(); // the host returned to the title
+        Assert.False(GameSession.Open);
+        Assert.False(GameSession.TryAdmit(out _));
+        Assert.NotEqual(before, GameSession.Generation); // a call admitted before the end is stale now
+
+        GameSession.Begin(); // the next save loaded
+        Assert.True(GameSession.TryAdmit(out int after));
+        Assert.Equal(GameSession.Generation, after);
+        Assert.NotEqual(before, after);
+    }
+
+    [Fact]
     public void Registering_a_name_again_replaces_it()
     {
         int first = 0, second = 0;

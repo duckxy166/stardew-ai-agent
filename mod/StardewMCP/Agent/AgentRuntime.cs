@@ -37,6 +37,8 @@ public class PendingCall
     /// <summary>Observes only: keeps the world frozen and may answer during the seat's own action.</summary>
     public bool Instant;
     public CallSource Source;
+    /// <summary>The save (<see cref="GameSession.Generation"/>) an AI's call was admitted for; a call of an earlier one is dropped.</summary>
+    public int Generation;
     /// <summary>Sent by the AI playing the seat (MCP client or built-in brain): <see cref="RunControl"/> holds and refuses these.</summary>
     public bool FromAgent => Source is CallSource.Agent or CallSource.Brain;
     public DateTime Queued = DateTime.UtcNow;
@@ -143,6 +145,15 @@ public class AgentRuntime
             call.Answer(false, RunControl.StopMessage, new ToolOutcome(false, Reasons.Interrupted, false, null));
             return call;
         }
+        if (call.FromAgent)
+        {
+            if (!GameSession.TryAdmit(out var generation))
+            {
+                call.Answer(false, NoSaveText, new ToolOutcome(false, Reasons.NotReady, false, null));
+                return call;
+            }
+            call.Generation = generation;
+        }
         (source != CallSource.Debug && call.Instant ? _observations : _actions).Enqueue(call);
         return call;
     }
@@ -152,6 +163,8 @@ public class AgentRuntime
     /// farmer that is gone, and forget this seat's per-save memory (loop guard, heart events, sightings, profession offers).
     /// Game thread. The runtime itself stays: seats keep theirs for the next save.
     /// </summary>
+    private const string NoSaveText = "No save is loaded (title screen or loading). Wait until the game is loaded, then try again.";
+
     public void Reset()
     {
         const string text = "The save was closed (back to the title screen). Wait until the game is loaded again.";
@@ -283,11 +296,18 @@ public class AgentRuntime
         {
             if (Current == null && !RunControl.ShouldHold(queue))
                 while (queue.TryDequeue(out var next))
-                    if (!next.Answered) // answered while it waited (AnswerQueued, run control): dropped
+                {
+                    if (next.Answered) // answered while it waited (AnswerQueued, run control): dropped
+                        continue;
+                    if (next.FromAgent && next.Generation != GameSession.Generation)
                     {
-                        Start(next);
-                        break;
+                        // admitted for a save that has closed since (it slipped in while the reset drained the queue)
+                        next.Answer(false, NoSaveText, new ToolOutcome(false, Reasons.NotReady, false, null));
+                        continue;
                     }
+                    Start(next);
+                    break;
+                }
             if (Current != null)
                 Step();
         }
