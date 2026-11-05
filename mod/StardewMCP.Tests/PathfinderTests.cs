@@ -12,14 +12,23 @@ public class PathfinderTests
 
     private static List<(int X, int Y)> Steps(IEnumerable<Vector2> route) => route.Select(t => ((int)t.X, (int)t.Y)).ToList();
 
-    /// <summary>The route must start next to <paramref name="start"/>, move one tile at a time, only touch open tiles and end on <paramref name="goal"/>.</summary>
+    /// <summary>
+    /// The route must start next to <paramref name="start"/>, move one tile at a time, only touch open tiles and end on
+    /// <paramref name="goal"/>. Only the first step out of a start walled in on all four sides may be diagonal.
+    /// </summary>
     private static void AssertValidRoute(TextGrid map, Vector2 start, Vector2 goal, List<Vector2> route)
     {
         Assert.NotEmpty(route);
         var previous = (X: (int)start.X, Y: (int)start.Y);
+        bool first = true;
         foreach (var tile in Steps(route))
         {
-            Assert.Equal(1, Math.Abs(tile.X - previous.X) + Math.Abs(tile.Y - previous.Y));
+            int dx = Math.Abs(tile.X - previous.X), dy = Math.Abs(tile.Y - previous.Y);
+            if (first && map.BoxedIn(previous.X, previous.Y))
+                Assert.True(dx == 1 && dy == 1, $"step out of a walled-in start must be diagonal, was ({tile.X},{tile.Y})");
+            else
+                Assert.Equal(1, dx + dy);
+            first = false;
             Assert.True(map.Open(tile.X, tile.Y), $"route steps on blocked tile ({tile.X},{tile.Y})");
             previous = tile;
         }
@@ -158,6 +167,72 @@ public class PathfinderTests
                     AssertValidRoute(map, start, goal, route);
             }
         }
+    }
+
+    [Fact]
+    public void A_start_walled_in_on_four_sides_steps_out_diagonally()
+    {
+        // Town on day 4 of the soundtest run: the farmer at (64,85), wedged into Lewis's house wall after Lewis walked
+        // through it, with only (65,86) open around it. Every walk failed for 15 game hours.
+        var map = new TextGrid(
+            "#####...",
+            "##S##...",
+            "###.....",
+            "........");
+        var start = map.Find('S');
+        var route = Route(map, start, new Vector2(0, 3));
+        Assert.NotNull(route);
+        Assert.Equal((3, 2), Steps(route!)[0]);
+        AssertValidRoute(map, start, new Vector2(0, 3), route!);
+
+        var oneStep = Route(map, start, new Vector2(3, 2));
+        Assert.Equal(new List<(int X, int Y)> { (3, 2) }, Steps(oneStep!));
+    }
+
+    [Fact]
+    public void A_start_with_one_open_side_never_cuts_a_corner()
+    {
+        var map = new TextGrid(
+            "#.###",
+            "#S###",
+            "###..",
+            ".....");
+        // (2,2) is diagonal to S, but S can walk up, so it stays shut in with (1,0).
+        Assert.Null(Route(map, map.Find('S'), new Vector2(4, 3)));
+        Assert.NotNull(Route(map, map.Find('S'), new Vector2(1, 0)));
+    }
+
+    [Fact]
+    public void A_start_walled_in_on_all_eight_sides_has_no_route()
+    {
+        var map = new TextGrid(
+            "###..",
+            "#S#..",
+            "###..");
+        Assert.Null(Route(map, map.Find('S'), new Vector2(4, 1)));
+    }
+
+    // ------------------------------------------------------------------ AvoidingGrid (re-plan around villagers)
+
+    [Fact]
+    public void Avoiding_grid_routes_around_the_avoided_tiles()
+    {
+        var map = new TextGrid(
+            "S...G",
+            ".....");
+        var avoid = new HashSet<Point> { new(2, 0) };
+        var route = new Pathfinder().FindPath(new AvoidingGrid(map, avoid), map.Find('S'), map.Find('G'));
+        Assert.NotNull(route);
+        Assert.DoesNotContain(new Vector2(2, 0), route!);
+        Assert.Equal(6, route!.Count);
+    }
+
+    [Fact]
+    public void Avoiding_grid_gives_null_when_the_avoided_tile_is_the_only_way()
+    {
+        var map = new TextGrid("S...G");
+        Assert.Null(new Pathfinder().FindPath(new AvoidingGrid(map, new HashSet<Point> { new(2, 0) }), map.Find('S'), map.Find('G')));
+        Assert.NotNull(new Pathfinder().FindPath(map, map.Find('S'), map.Find('G')));
     }
 
     // ------------------------------------------------------------------ FindPathToAny (the tiles around a villager)
