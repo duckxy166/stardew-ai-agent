@@ -174,7 +174,7 @@ public static partial class AgentTools
 
     /// <summary>A ripe crop or a forage item: what harvest_all picks up.</summary>
     private static bool FarmPickable(GameLocation loc, int x, int y) =>
-        FarmRipeCrop(loc, x, y) || (loc.Objects.TryGetValue(new Vector2(x, y), out var o) && o.isForage());
+        FarmRipeCrop(loc, x, y) || (loc.Objects.TryGetValue(new Vector2(x, y), out var o) && WorldText.IsLoose(o));
 
     private static string FarmTilesText(IEnumerable<Point> tiles, int max = 8)
     {
@@ -267,7 +267,7 @@ public static partial class AgentTools
                     if (obj.IsWeeds()) Debris("weeds", x, y);
                     else if (obj.IsTwig()) Debris("twigs", x, y);
                     else if (obj.IsBreakableStone()) Debris("stones", x, y);
-                    else if (obj.isForage()) forage.Add(x, y);
+                    else if (WorldText.IsLoose(obj)) forage.Add(x, y);
                 }
 
                 foreach (var rc in clumps)
@@ -541,7 +541,7 @@ public static partial class AgentTools
             if (obj.IsWeeds()) return (FarmCover.Weeds, "weeds", null);
             if (obj.IsTwig()) return (FarmCover.Twig, "twig", null);
             if (obj.IsBreakableStone()) return (FarmCover.Stone, "stone", null);
-            return (FarmCover.Other, obj.isForage() ? $"{obj.DisplayName} (forage: harvest_all)" : obj.DisplayName, null);
+            return (FarmCover.Other, WorldText.IsLoose(obj) ? $"{obj.DisplayName} (pick up: harvest_all)" : obj.DisplayName, null);
         }
         foreach (var rc in loc.resourceClumps)
             if (rc.occupiesTile(x, y)) return (FarmCover.Large, WorldText.ClumpName(rc.parentSheetIndex.Value), rc);
