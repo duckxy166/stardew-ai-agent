@@ -100,10 +100,11 @@ internal static class Sightings
         return new Sight(loc.NameOrUniqueName, (int)bush.Tile.X, (int)bush.Tile.Y, $"{name} bush", SightKind.Bush);
     }
 
-    /// <summary>An item lying still on the ground (not one already flying to a farmer).</summary>
+    /// <summary>An item lying on the ground, not one flying to a farmer (the game sets <c>player</c> only for a farmer with
+    /// room; chunksMoveTowardPlayer turns on for every settled drop).</summary>
     private static Sight? DebrisSight(GameLocation loc, Debris debris)
     {
-        if (debris.chunksMoveTowardPlayer || WorldText.DroppedItem(debris) is not { } name)
+        if (debris.player.Value != null || WorldText.DroppedItem(debris) is not { } name)
             return null;
         var at = debris.Chunks[0].position.Value;
         return new Sight(loc.NameOrUniqueName, (int)(at.X / 64), (int)(at.Y / 64), name, SightKind.Dropped);

@@ -651,27 +651,36 @@ public static partial class AgentTools
     }
 
     /// <summary>
-    /// Drops still lying near the worked tiles once the rest has flown into the inventory: those had no room. Without this line
-    /// a full bag looked like rocks that gave nothing (a farmer mined three floors and wrote that stone "just vanishes", 2026-11-05).
+    /// Drops near the worked tiles that the farmer's bag cannot take: they stay on the ground. Without this line a full bag
+    /// looked like rocks that gave nothing (a farmer mined three floors and wrote that stone "just vanishes", 2026-11-05).
+    /// Asked with the game's own room check, not by watching them: 45 ticks after the hit most drops are still bouncing, and
+    /// a settled one gets chunksMoveTowardPlayer whether or not anyone has room (Debris.updateChunks).
     /// </summary>
     private static string LeftOnGround(GameLocation loc, List<Point> tiles)
     {
         var left = new Dictionary<string, (int count, Point at)>();
         foreach (var deb in loc.debris)
         {
-            if (deb.chunksMoveTowardPlayer || WorldText.DroppedItem(deb) is not { } name)
+            if (deb.player.Value != null || WorldText.DroppedItem(deb) is not { } name || CanTake(Game1.player, deb))
                 continue;
             var p = deb.Chunks[0].position.Value;
             var at = new Point((int)(p.X / 64), (int)(p.Y / 64));
             if (!tiles.Any(t => Math.Max(Math.Abs(t.X - at.X), Math.Abs(t.Y - at.Y)) <= 3))
                 continue;
-            left[name] = left.TryGetValue(name, out var seen) ? (seen.count + deb.Chunks.Count, seen.at) : (deb.Chunks.Count, at);
+            int n = deb.item?.Stack ?? deb.Chunks.Count; // an Item drop is one chunk carrying the whole stack
+            left[name] = left.TryGetValue(name, out var seen) ? (seen.count + n, seen.at) : (n, at);
         }
         if (left.Count == 0)
             return "";
         var items = string.Join(", ", left.Select(kv => $"{kv.Key} ×{kv.Value.count} at ({kv.Value.at.X},{kv.Value.at.Y})"));
         return $"Left on the ground, no room in your inventory: {items}. Free a slot (ship, eat, store in a chest, or trash), then walk onto them.";
     }
+
+    /// <summary>The room check Debris.updateChunks makes before a drop flies to a farmer.</summary>
+    private static bool CanTake(Farmer f, Debris deb) =>
+        deb.item != null ? f.couldInventoryAcceptThisItem(deb.item)
+        : deb.debrisType.Value == Debris.DebrisType.RESOURCE ? f.couldInventoryAcceptThisItem(deb.itemId.Value, 1)
+        : f.couldInventoryAcceptThisItem(deb.itemId.Value, 1, deb.itemQuality);
 
     private static IEnumerator Plant(JsonElement a, CallContext c)
     {
