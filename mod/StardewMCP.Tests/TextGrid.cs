@@ -42,7 +42,10 @@ internal sealed class TextGrid : IWalkableGrid
         throw new InvalidOperationException($"No '{marker}' on the map");
     }
 
-    /// <summary>Length of the shortest 4-direction route, or null when there is none. Independent of the A* under test.</summary>
+    /// <summary>
+    /// Length of the shortest 4-direction route, or null when there is none; a start with no open tile to its four sides
+    /// may take its first step diagonally. Independent of the A* under test.
+    /// </summary>
     public int? ShortestSteps(int fromX, int fromY, int toX, int toY)
     {
         if (fromX == toX && fromY == toY)
@@ -51,8 +54,22 @@ internal sealed class TextGrid : IWalkableGrid
             return null;
         var dist = new Dictionary<(int, int), int> { [(fromX, fromY)] = 0 };
         var queue = new Queue<(int X, int Y)>();
-        queue.Enqueue((fromX, fromY));
         var moves = new[] { (0, -1), (1, 0), (0, 1), (-1, 0) };
+        if (BoxedIn(fromX, fromY))
+        {
+            foreach (var (dx, dy) in new[] { (1, -1), (1, 1), (-1, 1), (-1, -1) })
+            {
+                var next = (X: fromX + dx, Y: fromY + dy);
+                if (!Open(next.X, next.Y))
+                    continue;
+                if (next.X == toX && next.Y == toY)
+                    return 1;
+                dist[next] = 1;
+                queue.Enqueue(next);
+            }
+        }
+        else
+            queue.Enqueue((fromX, fromY));
         while (queue.Count > 0)
         {
             var cur = queue.Dequeue();
@@ -69,4 +86,7 @@ internal sealed class TextGrid : IWalkableGrid
         }
         return null;
     }
+
+    /// <summary>No open tile to the four sides of (x, y).</summary>
+    public bool BoxedIn(int x, int y) => !Open(x, y - 1) && !Open(x + 1, y) && !Open(x, y + 1) && !Open(x - 1, y);
 }

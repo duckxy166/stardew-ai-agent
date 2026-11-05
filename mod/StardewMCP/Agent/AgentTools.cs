@@ -385,23 +385,50 @@ public static partial class AgentTools
         }
         StartWalk(loc, path);
 
+        // Ticks count only while the world runs: a farmer held still while another AI thinks is neither slow nor stuck.
         int limit = 60 * 5 + path.Count * 40;
-        int stuck = 0;
+        int stuck = 0, replans = 0;
         var last = P.Position;
-        for (int t = 0; t < limit; t++)
+        var menuAtStart = Game1.activeClickableMenu;
+        for (int t = 0; t < limit;)
         {
             if (Game1.currentLocation != loc) { P.controller = null; yield break; } // walked through a warp
             // Stepped onto a warp: stop pushing into it, or the game re-warps (restarting the fade) every tick.
             if (Game1.isWarping) { P.controller = null; yield break; }
+            // A message that pops up mid-walk is a locked door the farmer bumped into ("not close enough to enter her room").
+            // Ported from Pichaya31847/stardew-ai-agent (MIT, commit 7d4f2fe; their day 56: talk_to pushed a farmer into
+            // Pierre's bedroom door for 6 real minutes).
+            if (Game1.activeClickableMenu is DialogueBox { isQuestion: false } bump && !ReferenceEquals(bump, menuAtStart))
+            {
+                var said = (bump.getCurrentString() ?? "").Replace("\n", " ").Replace("^", " ").Trim();
+                bump.closeDialogue();
+                Game1.dialogueUp = false;
+                P.controller = null;
+                P.Halt();
+                c.Fail(Reasons.NoPath, $"{LockedDoorNote} toward ({target.X},{target.Y}); stopped at ({P.TilePoint.X},{P.TilePoint.Y})." +
+                                       (said.Length > 0 ? $" The door said: \"{said}\"" : ""));
+                yield break;
+            }
             if (P.controller == null) break;
+            if (WorldClock.Frozen) { yield return null; continue; }
+            t++;
             if (Vector2.DistanceSquared(P.Position, last) < 0.01f) stuck++; else stuck = 0;
             last = P.Position;
             if (stuck > 90)
             {
-                // Something moved into the way (villager, animal): re-plan once from here.
+                // Something moved into the way (villager, animal), or the farmer is wedged against a wall: stand square on the
+                // tile and re-plan around where villagers stand, up to MaxReplans times. Ported from
+                // Pichaya31847/stardew-ai-agent (MIT, commit 7d4f2fe; their days 10 and 28: every walk out of Robin's house
+                // stopped under Maru's locked door without moving, 21 times).
+                if (++replans > MaxReplans) break;
                 P.controller = null;
                 P.Halt();
-                var re = new Pathfinder().FindPath(loc, P.TilePoint.ToVector2(), target.ToVector2());
+                if (Game1.activeClickableMenu is DialogueBox { isQuestion: false } msg) { msg.closeDialogue(); Game1.dialogueUp = false; }
+                var here = P.TilePoint;
+                if (Pathfinder.IsWalkable(loc, here.X, here.Y)) P.setTileLocation(here.ToVector2());
+                var avoid = new HashSet<Point>(loc.characters.Select(n => n.TilePoint).Where(p => p != target && p != here));
+                var re = new Pathfinder().FindPath(loc, here.ToVector2(), target.ToVector2(), avoid)
+                         ?? new Pathfinder().FindPath(loc, here.ToVector2(), target.ToVector2());
                 if (re == null) break;
                 StartWalk(loc, re);
                 stuck = -200;
@@ -414,6 +441,12 @@ public static partial class AgentTools
             c.Fail(Reasons.NoPath, $"Could not reach ({target.X},{target.Y}); stopped at ({P.TilePoint.X},{P.TilePoint.Y}).");
     }
 
+    /// <summary>How a walk that ran into a locked door fails.</summary>
+    internal const string LockedDoorNote = "A locked door is in the way";
+
+    /// <summary>Times one walk re-plans after standing still for 90 running ticks.</summary>
+    private const int MaxReplans = 3;
+
     /// <summary>
     /// Run along <paramref name="route"/> (the tiles to step on, in order) with a <see cref="WalkController"/>, opening the
     /// doors on it that this farmer may pass. An empty route starts nothing.
@@ -421,6 +454,16 @@ public static partial class AgentTools
     internal static void StartWalk(GameLocation loc, IReadOnlyList<Vector2> route)
     {
         if (route.Count == 0) return;
+        // A route out of a tile walled in on all four sides starts diagonally (Pathfinder.FindPathToAny): the farmer is wedged
+        // into a wall, where the game's own movement can't get it out. Put it on that first tile (day 4 of the soundtest run:
+        // Lewis walked through a farmer and left it inside his house wall at Town (64,85) for 15 game hours).
+        var here = P.TilePoint;
+        if (WalkMath.Steps(here, route[0].ToPoint()) == 1 && route[0].X != here.X && route[0].Y != here.Y)
+        {
+            P.setTileLocation(route[0]);
+            route = route.Skip(1).ToList();
+            if (route.Count == 0) return;
+        }
         foreach (var step in route)
         {
             int sx = (int)step.X, sy = (int)step.Y;

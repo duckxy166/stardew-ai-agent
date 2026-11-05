@@ -23,6 +23,10 @@ public partial class Pathfinder
     public List<Vector2>? FindPath(GameLocation location, Vector2 start, Vector2 goal) =>
         FindPath(new LocationGrid(location), start, goal);
 
+    /// <summary>As <see cref="FindPath(GameLocation, Vector2, Vector2)"/>, never stepping on <paramref name="avoid"/> (where villagers stand).</summary>
+    public List<Vector2>? FindPath(GameLocation location, Vector2 start, Vector2 goal, ISet<Point> avoid) =>
+        FindPath(new AvoidingGrid(new LocationGrid(location), avoid), start, goal);
+
     /// <summary>Route to the nearest of <paramref name="goals"/> by walking (see <see cref="FindPathToAny(IWalkableGrid, Vector2, IEnumerable{Point})"/>).</summary>
     public List<Vector2>? FindPathToAny(GameLocation location, Vector2 start, IEnumerable<Point> goals) =>
         FindPathToAny(new LocationGrid(location), start, goals);

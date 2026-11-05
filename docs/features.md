@@ -102,6 +102,8 @@ makes every choice.
 - JSONL logs, diaries, daily stats and failure summaries for every day
 - Frozen frames that look live, speech bubbles timed to the running world, Thai and English UI
 - Every farmer walks with a smooth running stride on its own screen too, not in stop-and-go taps
+- A walk blocked by a villager finds a way around them; a locked door ends it with the door's message; a farmer a villager
+  pushed into a wall steps back out
 
 ## ⏱️ Time and control
 
