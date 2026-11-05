@@ -39,6 +39,7 @@ public class ModEntry : Mod
         SocialTools.Apply(ModManifest);
         Ownership.Apply(ModManifest);
         AgentTools.Apply(ModManifest);
+        SoundLog.Apply(ModManifest, _config, _log, Monitor);
         string assetDir = Path.Combine(helper.DirectoryPath, "assets");
         _http = new AgentHttp(_log, _config, Monitor, assetDir, ModManifest.Version.ToString());
         Brains.Init(helper, Monitor, _config, _log, assetDir);
@@ -126,6 +127,8 @@ public class ModEntry : Mod
             TryAutoLoad(e.Ticks);
             DebugApi.Tick();
             SplitScreen.HostTick();
+            if (e.IsMultipleOf(60))
+                SoundLog.Flush();
         }
         else
             SplitScreen.GuestTick(seat.Screen);
@@ -140,6 +143,7 @@ public class ModEntry : Mod
         Briefing.Tick(seat, e.IsMultipleOf(300));
         if (e.IsMultipleOf(15))
             seat.State = ScreenState.Capture();
+        SoundLog.Tick(seat.Screen, e.IsMultipleOf(15));
         // Local split-screen stops the clock once every screen asks to (a menu, or a farmer that cannot move). The parked
         // camera must never ask: with the three AIs waiting in bed the clock stopped at 18:20 and 2:00 AM never came (2026-10-20)
         if (seat.Role == SeatRole.Camera && Context.IsWorldReady)
