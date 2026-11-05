@@ -17,7 +17,7 @@ namespace StardewMCP.Agent;
 /// Split-screen plays every screen's sounds through one output, so one seat's sound cannot be recorded on its own.
 /// With <see cref="ModConfig.SoundLog"/> on, every game sound and music change goes to <c>sounds_NNN.jsonl</c> with the
 /// seat whose screen played it and how loud each seat would hear it, so a track per seat can be rebuilt afterwards.
-/// Covers <see cref="SoundsHelper.PlayLocal"/> (Game1.playSound, location sounds) and <see cref="Game1.changeMusicTrack"/>.
+/// Covers <see cref="SoundsHelper.PlayLocal"/> (Game1.playSound, location sounds) and the music each screen asks for.
 /// Not yet: ambient loops the game plays straight from the sound bank (wind, rain, AmbientLocationSounds).
 /// </summary>
 public static class SoundLog
@@ -27,20 +27,31 @@ public static class SoundLog
     private static readonly object _lock = new();
     private static List<(int day, string line)> _pending = new();
     private static bool _warned;
+    private static bool _on;
+    private static Func<MusicContext>? _activeMusicContext;
+    private static readonly string?[] _lastMusic = new string?[Players.Seats];
+    private static readonly UTF8Encoding NoBom = new(false);
 
     /// <summary>Patches only when the option is on, so a run without it plays exactly as before.</summary>
     public static void Apply(IManifest manifest, ModConfig config, AgentLog log, IMonitor monitor)
     {
         if (!config.SoundLog)
             return;
+        _on = true;
         _log = log;
         _monitor = monitor;
         var h = new Harmony(manifest.UniqueID);
         h.Patch(AccessTools.Method(typeof(SoundsHelper), nameof(SoundsHelper.PlayLocal)),
             postfix: new HarmonyMethod(typeof(SoundLog), nameof(PlayLocal_Postfix)));
-        h.Patch(AccessTools.Method(typeof(Game1), nameof(Game1.changeMusicTrack)),
-            postfix: new HarmonyMethod(typeof(SoundLog), nameof(ChangeMusic_Postfix)));
-        GameSession.OnEnd("sound log", Flush);
+        // the screen's own music context (Default, Event, MiniGame...): protected static on Game1, per instance
+        var getter = AccessTools.PropertyGetter(typeof(Game1), "_activeMusicContext");
+        if (getter != null)
+            _activeMusicContext = AccessTools.MethodDelegate<Func<MusicContext>>(getter);
+        GameSession.OnEnd("sound log", () =>
+        {
+            Flush();
+            Array.Clear(_lastMusic);
+        });
         monitor.Log("Sound log on: sounds_NNN.jsonl in the log folder.", LogLevel.Info);
     }
 
@@ -72,12 +83,24 @@ public static class SoundLog
         }
     }
 
-    private static void ChangeMusic_Postfix(string newTrackName, MusicContext music_context)
+    /// <summary>
+    /// Every screen's tick: the track this screen asks for, logged when it changes. In split-screen only the main
+    /// screen's choice plays, so each seat's own music is not in the recording. Sampled at the end of the tick rather
+    /// than hooked on changeMusicTrack, which the game calls every tick and flips between two tracks within one
+    /// (2026-11-05 test: 33,000 calls in one day).
+    /// </summary>
+    public static void Tick(int screen, bool sample)
     {
+        if (!_on || !sample || !Context.IsWorldReady || screen < 0 || screen >= _lastMusic.Length)
+            return;
         try
         {
-            if (!Context.IsWorldReady || newTrackName == null)
+            var ctx = _activeMusicContext?.Invoke() ?? MusicContext.Default;
+            string track = Game1.getMusicTrackName(ctx);
+            string key = ctx + "/" + track;
+            if (key == _lastMusic[screen])
                 return;
+            _lastMusic[screen] = key;
             Write(new
             {
                 kind = "music",
@@ -85,8 +108,8 @@ public static class SoundLog
                 day = AgentLog.FarmDay,
                 time = Game1.timeOfDay,
                 by = Players.Current.Id,
-                track = newTrackName,
-                ctx = music_context.ToString(),
+                track,
+                ctx = ctx.ToString(),
                 loc = Game1.currentLocation?.NameOrUniqueName
             });
         }
@@ -97,10 +120,16 @@ public static class SoundLog
     }
 
     /// <summary>Seats that would hear the sound and how loud (0..1). The playing screen uses its live view; the
-    /// others use their last <see cref="ScreenState"/> (up to 15 ticks old).</summary>
+    /// others use their last <see cref="ScreenState"/> (up to 15 ticks old). A sound with no location (footsteps,
+    /// dialogue blips, menu clicks) is the playing screen's own: the game plays it for that screen only.</summary>
     private static Dictionary<string, float> Hearing(GameLocation? location, Vector2? tile)
     {
         var hear = new Dictionary<string, float>();
+        if (location == null)
+        {
+            hear[Players.Current.Id] = 1f;
+            return hear;
+        }
         foreach (var slot in Players.Slots.Take(Players.ScreenCount))
         {
             string? map;
@@ -117,7 +146,7 @@ public static class SoundLog
             }
             else
                 continue;
-            float v = Volume(location?.NameOrUniqueName, location != null, tile, map, view);
+            float v = Volume(location.NameOrUniqueName, tile, map, view);
             if (v > 0f)
                 hear[slot.Id] = MathF.Round(v, 2);
         }
@@ -126,10 +155,8 @@ public static class SoundLog
 
     /// <summary>The game's rule (SoundsHelper.GetVolumeForDistance) for any screen's map and view: full volume on
     /// screen, fading to silent <see cref="SoundsHelper.MaxDistanceFromScreen"/> tiles outside it.</summary>
-    internal static float Volume(string? soundMap, bool hasLocation, Vector2? tile, string? screenMap, Rectangle view)
+    internal static float Volume(string soundMap, Vector2? tile, string? screenMap, Rectangle view)
     {
-        if (!hasLocation)
-            return 1f;
         if (soundMap != screenMap)
             return 0f;
         if (tile is not { } t)
@@ -170,7 +197,7 @@ public static class SoundLog
                 var sb = new StringBuilder();
                 foreach (var (_, line) in day)
                     sb.Append(line).Append('\n');
-                File.AppendAllText(_log.SoundFile(day.Key), sb.ToString(), Encoding.UTF8);
+                File.AppendAllText(_log.SoundFile(day.Key), sb.ToString(), NoBom);
             }
         }
         catch (Exception ex)
