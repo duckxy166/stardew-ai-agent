@@ -135,6 +135,9 @@ public class AgentLog
 
     public string DayFile(int day) => Path.Combine(Dir, $"day_{day:000}.jsonl");
 
+    /// <summary>The day's sound log (<see cref="SoundLog"/>), when <see cref="ModConfig.SoundLog"/> is on.</summary>
+    public string SoundFile(int day) => Path.Combine(Dir, $"sounds_{day:000}.jsonl");
+
     /// <summary>Diary of one player; p1 (or a single-player run) keeps the original file name.</summary>
     public string DiaryFile(int day, string? player = null) =>
         Path.Combine(Dir, player is null or "p1" ? $"diary_{day:000}.md" : $"diary_{day:000}_{player}.md");

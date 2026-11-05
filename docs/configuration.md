@@ -72,6 +72,7 @@ An `ai` seat takes these fields:
 | `LockHostInput` | `true` | Ignore the real keyboard/mouse on P1 once a save is loaded, when P1 is an AI |
 | `CleanFrames` | `true` | Frozen frames look live (no Paused banner, HUD kept), no cursors, gamepad hint or join messages |
 | `AutoZoom` | `true` | Zoom each screen to about 20 tiles across |
+| `SoundLog` | `false` | Write every sound and music change to `sounds_NNN.jsonl` in the log folder: the seat that played it and how loud each seat would hear it (`hear`), so a per-seat audio track can be rebuilt; read at startup |
 
 The first time the game starts its co-op server, Windows Firewall may ask for permission once; allow it. For
 separate wallets, create the co-op farm with "Separate wallets" on (see [economy.md](economy.md)).

@@ -39,6 +39,7 @@ public class ModEntry : Mod
         SocialTools.Apply(ModManifest);
         Ownership.Apply(ModManifest);
         AgentTools.Apply(ModManifest);
+        SoundLog.Apply(ModManifest, _config, _log, Monitor);
         string assetDir = Path.Combine(helper.DirectoryPath, "assets");
         _http = new AgentHttp(_log, _config, Monitor, assetDir, ModManifest.Version.ToString());
         Brains.Init(helper, Monitor, _config, _log, assetDir);
@@ -126,6 +127,8 @@ public class ModEntry : Mod
             TryAutoLoad(e.Ticks);
             DebugApi.Tick();
             SplitScreen.HostTick();
+            if (e.IsMultipleOf(60))
+                SoundLog.Flush();
         }
         else
             SplitScreen.GuestTick(seat.Screen);

@@ -165,6 +165,10 @@ public class ModConfig
     /// <summary>Split-screen: frozen frames look like live ones (no Paused banner, HUD kept) and hide cursors, the gamepad hint and join messages.</summary>
     public bool CleanFrames { get; set; } = true;
 
+    /// <summary>Write every game sound and music change to sounds_NNN.jsonl with the seat that played it and how loud
+    /// each seat would hear it (split-screen mixes all screens into one output). Read at startup.</summary>
+    public bool SoundLog { get; set; } = false;
+
     /// <summary>Split-screen: set each screen's zoom to keep about 20 tiles in view (1.5 × screen width / 960).</summary>
     public bool AutoZoom { get; set; } = true;
 
