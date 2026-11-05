@@ -443,7 +443,8 @@ public static partial class AgentTools
                           "Someone walking somewhere is followed and talked to as soon as you are next to them (a corner tile is close enough). " +
                           "If they are on another map you travel there first (go=false: just tell me where they are). " +
                           "Reports where they were, your friendship points before and after, their first line and the reaction to a gift. " +
-                          "Talking counts once a day; at most 1 gift per day and 2 per week. Time spent travelling is game time.",
+                          "Talking counts once a day; at most 1 gift per day and 2 per week. Time spent travelling is game time. " +
+                          "With a fellow farmer's name: walks up to them when they are on your map; farmers talk with say.",
             Schema = Obj(new
             {
                 name = Str("Villager name, e.g. Pierre"),
@@ -476,7 +477,7 @@ public static partial class AgentTools
         var spot = NpcInfo.Find(name);
         if (spot == null)
         {
-            c.Fail($"No villager called \"{name}\". Call villagers() without a name for the list.");
+            c.Fail(FarmerHint(name) ?? $"No villager called \"{name}\". Call villagers() without a name for the list.");
             yield break;
         }
         c.Result = NpcInfo.Detail(P, spot, NpcInfo.ByName(spot.Name), Rt.Log.Player, Config.RevealGiftTastes);
@@ -519,6 +520,60 @@ public static partial class AgentTools
 
     internal static IEnumerator TalkTo(JsonElement a, CallContext c) => TalkToNpc(a, c);
 
+    /// <summary>The failure text for a fellow farmer's name (or nickname) given where a villager was expected, or null.</summary>
+    private static string? FarmerHint(string name) =>
+        SocialTools.OtherFarmer(name) is { } mate
+            ? $"{SocialTools.Label(mate)} is a fellow farmer, not a villager. Farmers talk with say: find them, and once they are on your screen say(text=...) is heard " +
+              $"(talk_to {SocialTools.Label(mate)} walks you up to them when they are on the same map as you)."
+            : null;
+
+    /// <summary>
+    /// talk_to with a fellow farmer's name: when they are on this map, walk up to them and tell the farmer to use say. Never
+    /// travels and never says where they are: finding each other is part of the show. Ported from
+    /// Pichaya31847/stardew-ai-agent (MIT, WalkUpToFarmer in commit 9f69b72, which travels to their map; here it stays on this one).
+    /// </summary>
+    private static IEnumerator WalkUpToFarmer(PlayerSlot mate, bool go, CallContext c)
+    {
+        static int Dist(Point a, Point b) => Math.Abs(a.X - b.X) + Math.Abs(a.Y - b.Y);
+        var label = SocialTools.Label(mate);
+        bool SameMap(Farmer? f) => f?.currentLocation != null && f.currentLocation.NameOrUniqueName == Loc.NameOrUniqueName;
+
+        var them = Romance.FarmerOf(mate);
+        if (!SameMap(them))
+        {
+            c.Fail(Reasons.NotHere, $"{label} is a fellow farmer and is not on this map. Farmers talk with say, which they hear only when you are on their screen: " +
+                                    "go and find them, then talk_to them again or say(text=...).");
+            yield break;
+        }
+        if (!go)
+        {
+            c.Result = $"{label} is a fellow farmer on this map. Farmers talk with say, not talk_to: say(text=...) is heard when you are on their screen.";
+            yield break;
+        }
+        for (int leg = 0; leg < 6; leg++)
+        {
+            them = Romance.FarmerOf(mate);
+            if (!SameMap(them)) break;
+            var aim = them!.TilePoint;
+            if (Dist(P.TilePoint, aim) <= 1) break;
+            var walk = new CallContext();
+            yield return WalkAdjacent(aim, walk);
+            if (!walk.Ok) yield return Ticks(30);
+        }
+        them = Romance.FarmerOf(mate);
+        if (!SameMap(them))
+        {
+            c.Fail(Reasons.NotHere, $"{label} left this map before you got to them. Go and find them, then say(text=...).");
+            yield break;
+        }
+        if (Dist(P.TilePoint, them!.TilePoint) > 3)
+        {
+            c.Fail(Reasons.NoPath, $"Couldn't catch up with {label}. Try talk_to again, or say(text=...): it is heard while they are on your screen.");
+            yield break;
+        }
+        c.Result = $"You are next to {label} now. Farmers talk with say, not talk_to: call say(text=...) now and they will hear you.";
+    }
+
     private static IEnumerator TalkToNpc(JsonElement a, CallContext c)
     {
         var name = S(a, "name").Trim();
@@ -529,8 +584,13 @@ public static partial class AgentTools
             yield break;
         }
         var spot = NpcInfo.Find(name);
-        if (spot == null) { c.Fail($"No villager called \"{name}\". villagers() lists who you can talk to."); yield break; }
         bool go = NpcFlag(a, "go", true);
+        if (spot == null)
+        {
+            if (SocialTools.OtherFarmer(name) is { } mate) { yield return WalkUpToFarmer(mate, go, c); yield break; }
+            c.Fail($"No villager called \"{name}\". villagers() lists who you can talk to.");
+            yield break;
+        }
 
         Item? giftItem = null;
         int giftSlot = -1;

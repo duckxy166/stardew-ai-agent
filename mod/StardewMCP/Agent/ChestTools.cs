@@ -30,7 +30,7 @@ public static partial class AgentTools
                       "items: several names at once. quality: normal, silver, gold or iridium to move only that quality (default every quality). " +
                       "quantity: how many of each named item (default all). The result says what moved, per quality, what did not fit, " +
                       "and what others put in or took out since you last used that chest. " +
-                      "x, y is the chest tile; leave it out to use a chest menu you already opened with interact.",
+                      "x, y is the chest tile; leave it out to use a chest menu you already opened with interact. A chest another farmer has open is waited for (up to 10 s).",
         Schema = Obj(new
         {
             x = Int("Chest tile x"),
@@ -125,6 +125,13 @@ public static partial class AgentTools
     /// <summary>What the "everything" mode of store leaves in the pack: tools, seeds (category -74) and cooked dishes (category -7).</summary>
     private static bool KeepOutOfChest(Item it) => it is Tool || it.Category == -74 || it.Category == -7;
 
+    /// <summary>How long chest waits, in running seconds, for a chest another farmer has open.</summary>
+    private const int ChestBusyWaitSeconds = 10;
+
+    /// <summary>The chest (or mini-fridge) standing on <paramref name="tile"/>, if any.</summary>
+    private static Chest? ChestAt(GameLocation loc, Point tile) =>
+        loc.Objects.TryGetValue(tile.ToVector2(), out var o) ? o as Chest : null;
+
     // ------------------------------------------------------------------ the tool
 
     private static IEnumerator ChestTool(JsonElement a, CallContext c)
@@ -177,11 +184,32 @@ public static partial class AgentTools
             yield return Interact(ArgsOf(new { x = tile.X, y = tile.Y, reason = Reason(a) }), sub);
             if (!sub.Ok) { c.Fail(sub.Result); yield break; }
             for (int i = 0; i < 120 && Game1.activeClickableMenu == null; i++) yield return null;
+            bool busy = false;
+            if (Game1.activeClickableMenu == null && ChestAt(Loc, tile) is { } shared && shared.GetMutex().IsLocked())
+            {
+                // The game lets one farmer at a time open a chest: wait for the other to close it, then try again.
+                // Only running ticks count: while an AI thinks the world is frozen and the other farmer can't close it.
+                // Ported from Pichaya31847/stardew-ai-agent (MIT, commit 141b3b6; their days 1-34: 19 "Nothing opened"
+                // while the other AI stood at the same chest). Theft is still the Ownership patch on the menu's grab.
+                for (int running = 0; running < 60 * ChestBusyWaitSeconds && shared.GetMutex().IsLocked();)
+                {
+                    if (!WorldClock.Frozen) running++;
+                    yield return null;
+                }
+                busy = shared.GetMutex().IsLocked();
+                if (!busy)
+                {
+                    yield return Interact(ArgsOf(new { x = tile.X, y = tile.Y, reason = Reason(a) }), new CallContext());
+                    for (int i = 0; i < 120 && Game1.activeClickableMenu == null; i++) yield return null;
+                }
+            }
             opened = true;
             spot = $" at ({tile.X},{tile.Y})";
             if (Game1.activeClickableMenu is not ItemGrabMenu { context: Chest })
             {
-                var problem = Game1.activeClickableMenu == null
+                var problem = busy
+                    ? $"The chest at ({tile.X},{tile.Y}) is open on another farmer's screen; waited {ChestBusyWaitSeconds} s and it is still in use. Try again later."
+                    : Game1.activeClickableMenu == null
                     ? $"Nothing opened at ({tile.X},{tile.Y}). It is not a chest or the fridge, or another player is using it."
                     : $"({tile.X},{tile.Y}) opened {MenuName(Game1.activeClickableMenu)}, which is not a chest. Use menu() for it.";
                 if (Game1.activeClickableMenu != null) yield return CloseMenu(default, new CallContext());

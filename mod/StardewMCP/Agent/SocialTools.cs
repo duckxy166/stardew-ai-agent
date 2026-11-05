@@ -134,12 +134,25 @@ public static class SocialTools
     internal static IEnumerable<PlayerSlot> OtherAis() =>
         Players.Slots.Where(s => s.Role == SeatRole.Ai && s.Id != Me && s.Active && NameOf(s) != null);
 
-    /// <summary>The AI seat named by <paramref name="to"/> (id or name); otherwise fails <paramref name="c"/> with the valid choices.</summary>
+    /// <summary>True when <paramref name="name"/> is this seat's farmer name or one of its configured <see cref="SeatConfig.Nicknames"/>.</summary>
+    internal static bool Called(PlayerSlot s, string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0) return false;
+        if (string.Equals(NameOf(s), name, StringComparison.OrdinalIgnoreCase)) return true;
+        var nicks = AgentTools.Config.Seat(s.Screen).Nicknames;
+        return nicks != null && nicks.Any(n => string.Equals(n?.Trim(), name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Another farmer (an AI, or the human on P1) called <paramref name="name"/> by name or nickname, or null.</summary>
+    internal static PlayerSlot? OtherFarmer(string name) =>
+        Players.Slots.FirstOrDefault(s => (s.Role is SeatRole.Ai or SeatRole.Human) && s.Id != Me && s.Active && NameOf(s) != null && Called(s, name));
+
+    /// <summary>The AI seat named by <paramref name="to"/> (id, name or nickname); otherwise fails <paramref name="c"/> with the valid choices.</summary>
     internal static PlayerSlot? Target(string to, CallContext c)
     {
         to = to.Trim();
-        var seat = OtherAis().FirstOrDefault(s => s.Id.Equals(to, StringComparison.OrdinalIgnoreCase) ||
-                                                  string.Equals(NameOf(s), to, StringComparison.OrdinalIgnoreCase));
+        var seat = OtherAis().FirstOrDefault(s => s.Id.Equals(to, StringComparison.OrdinalIgnoreCase) || Called(s, to));
         if (seat == null)
             c.Fail($"No player \"{to}\". Players you can address: {string.Join(", ", OtherAis().Select(Label))}.");
         return seat;
