@@ -45,6 +45,10 @@ The batch tools (`water_all`, `harvest_all`, `clear_area`, `till_area`, `plant` 
 energy, a menu, a late hour, a full pack) and say what is left. `use_tool`, `plant` and `harvest` always report
 `done`, `remaining` and `skipped` tiles.
 
+`tiles` takes `[[x,y],...]` and also the shapes models send instead: `[{"x":1,"y":2}]`, `["1,2"]`, one string
+`"[(1, 2), (3, 4)]"` or a flat `[x1,y1,x2,y2]`. A single `tile`, or `x` and `y`, works when `tiles` is missing. Numbers may
+be numeric strings (`"12"`) or whole decimals (`12.0`), in every tool.
+
 ## Game knowledge ⚡
 
 Read from the game's own data, costs no game time.
@@ -54,7 +58,7 @@ Read from the game's own data, costs no game time.
 | `crops` ⚡ | *`season`* | Season planner: growth and regrow days, last day to plant, harvests that fit, seed and sell prices, gold per tile per day; marks the seeds you carry |
 | `item_info` ⚡ | `name` | An object's sell prices by quality, what it restores, shops that sell it and recipes that use it |
 | `calendar` ⚡ | *`days`* | Today and the next days: festivals, birthdays, the next festival, the main shops' hours and closed days |
-| `villagers` ⚡ | *`name`* | Everyone: where they are, hearts, talked and gifted today and this week, birthdays. With a name: the gift tastes found out so far and what a date or a proposal still needs |
+| `villagers` ⚡ | *`name`* | Everyone: where they are, hearts, talked and gifted today and this week, birthdays. With a name: the gift tastes found out so far and what a date or a proposal still needs. A fellow farmer's name says to talk with `say` |
 | `quests` ⚡ | | Quest journal with story, giver, progress and reward; today's Help Wanted request and who took it; Special Orders |
 
 ## Items, crafting and cooking
@@ -63,7 +67,7 @@ Read from the game's own data, costs no game time.
 |---|---|---|
 | `craft` | *`recipe`*, *`quantity`* | Craft from the recipes you know; `craft()` lists them |
 | `cook` | *`recipe`*, *`quantity`* | Cook the dishes you know in the farmhouse kitchen, from the pack and the fridge; `cook()` lists them |
-| `chest` | *`x`*, *`y`*, *`action`*, *`item`*, *`items`*, *`quality`*, *`quantity`* | Store or take items in a chest or the fridge in one call: by name and quality, several items, or "everything". The result adds what others put in or took out since you last used that chest. `action=all` lists every chest and fridge on the farm with whose it is, what it holds and the recent changes (no walking) |
+| `chest` | *`x`*, *`y`*, *`action`*, *`item`*, *`items`*, *`quality`*, *`quantity`* | Store or take items in a chest or the fridge in one call: by name and quality, several items, or "everything". The result adds what others put in or took out since you last used that chest. `action=all` lists every chest and fridge on the farm with whose it is, what it holds and the recent changes (no walking). A chest another farmer has open is waited for (up to 10 s of running time) and opened again |
 | `equip` | `item`, *`slot`*, *`count`* | Put on a ring, boots or a hat (the old one goes back), or attach bait and tackle to the fishing rod |
 | `wear` | `item` | Put on a hat, shirt or pants from the pack |
 | `wardrobe` ⚡ | | What you wear and the clothes you carry |
@@ -97,7 +101,7 @@ Buildings and animals are paid from the caller's own money and items.
 
 | Tool | Arguments | What it does |
 |---|---|---|
-| `talk_to` | `name`, *`gift_item`*, *`go`* | Find a villager (travels across maps unless `go=false`), talk, optionally give a gift; reports friendship points before and after and their reaction. A villager who is walking is followed and talked to from any tile next to them, corners included |
+| `talk_to` | `name`, *`gift_item`*, *`go`* | Find a villager (travels across maps unless `go=false`), talk, optionally give a gift; reports friendship points before and after and their reaction. A villager who is walking is followed and talked to from any tile next to them, corners included. A fellow farmer's name or nickname (`Seats[].Nicknames`): walks up to them when they are on your map and tells you to use `say`; on another map it fails without saying where they are |
 | `bouquet` | `name`, *`go`* | Ask a villager to date you (8 hearts) |
 | `mermaid_pendant` | `name`, *`go`* | Propose to a villager (10 hearts, upgraded house) |
 | `festival` | `action`, *`to`*, *`max`* | On a festival day: `start` talks to Lewis and begins the main event, `leave` leaves the festival (alone it confirms; in co-op every farmer must leave together). In co-op both wait up to a minute of running time for the other farmers, tell them, then cancel the wait with `not_ready`. `eggs` picks up eggs during the Egg Festival's egg hunt (nearest first, until the hunt ends or `max` are picked; `look` shows the eggs as `E`) |

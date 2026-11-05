@@ -26,6 +26,9 @@ public class SeatConfig
     /// <summary>Farmhand name (P2-P4); empty = FarmhandNames / "P{N}".</summary>
     public string Name { get; set; } = "";
 
+    /// <summary>Other names the farmers call this seat's farmer by (e.g. "พี่ส้ม"); talk_to, villagers, say and give accept them like the name.</summary>
+    public string[] Nicknames { get; set; } = Array.Empty<string>();
+
     public bool IsOff => Role.Equals("off", StringComparison.OrdinalIgnoreCase);
     public bool IsHuman => Role.Equals("human", StringComparison.OrdinalIgnoreCase);
     public bool IsCamera => Role.Equals("camera", StringComparison.OrdinalIgnoreCase);

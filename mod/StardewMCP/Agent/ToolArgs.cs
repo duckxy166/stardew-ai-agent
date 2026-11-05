@@ -1,5 +1,9 @@
+using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Xna.Framework;
 
 namespace StardewMCP.Agent;
@@ -40,18 +44,85 @@ public static partial class AgentTools
         a.ValueKind == JsonValueKind.Object && a.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? def : def;
 
     internal static int I(JsonElement a, string name, int def) =>
-        a.ValueKind == JsonValueKind.Object && a.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : def;
+        a.ValueKind == JsonValueKind.Object && a.TryGetProperty(name, out var v) && AsInt(v) is int n ? n : def;
+
+    /// <summary>
+    /// An integer from a JSON number (12, or 12.0 rounded) or a numeric string ("12"), else null. GetInt32 threw on
+    /// both. Ported from Pichaya31847/stardew-ai-agent (MIT, ToolArgs.cs).
+    /// </summary>
+    internal static int? AsInt(JsonElement v)
+    {
+        if (v.ValueKind == JsonValueKind.Number)
+            return v.TryGetInt32(out var i) ? i : v.TryGetDouble(out var d) && d is >= int.MinValue and <= int.MaxValue ? (int)Math.Round(d) : null;
+        if (v.ValueKind == JsonValueKind.String && double.TryParse(v.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var s) && s is >= int.MinValue and <= int.MaxValue)
+            return (int)Math.Round(s);
+        return null;
+    }
 
     internal static bool Has(JsonElement a, string name) =>
         a.ValueKind == JsonValueKind.Object && a.TryGetProperty(name, out var v) && v.ValueKind != JsonValueKind.Null;
 
+    private static readonly Regex TilePair = new(@"(-?\d+)\s*[,\s]\s*(-?\d+)", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Tiles from [[x,y],...] and the other shapes models send: [{"x":1,"y":2}], ["1,2", "(3, 4)"], [["1,2"]], the whole
+    /// list as one string "[(1, 2), (3, 4)]", and a flat [x1, y1, x2, y2...]. "tiles" also takes one tile as "tile" or
+    /// as x and y. Ported from Pichaya31847/stardew-ai-agent (MIT, ToolArgs.cs; their local Qwen run lost 34 use_tool
+    /// calls to "No tiles given").
+    /// </summary>
     internal static List<Point> TileList(JsonElement a, string name)
     {
-        var list = new List<Point>();
-        if (a.ValueKind == JsonValueKind.Object && a.TryGetProperty(name, out var arr) && arr.ValueKind == JsonValueKind.Array)
-            foreach (var t in arr.EnumerateArray())
-                if (t.ValueKind == JsonValueKind.Array && t.GetArrayLength() >= 2)
-                    list.Add(new Point(t[0].GetInt32(), t[1].GetInt32()));
+        var list = TileListOf(a, name);
+        if (list.Count == 0 && name == "tiles")
+        {
+            list = TileListOf(a, "tile");
+            if (list.Count == 0 && a.ValueKind == JsonValueKind.Object && a.TryGetProperty("x", out var x) && a.TryGetProperty("y", out var y)
+                && AsInt(x) is int px && AsInt(y) is int py)
+                list.Add(new Point(px, py));
+        }
         return list;
+    }
+
+    private static List<Point> TileListOf(JsonElement a, string name)
+    {
+        var list = new List<Point>();
+        if (a.ValueKind != JsonValueKind.Object || !a.TryGetProperty(name, out var arr)) return list;
+        if (arr.ValueKind == JsonValueKind.String)
+        {
+            AddTilePairs(arr.GetString(), list);
+            return list;
+        }
+        if (arr.ValueKind != JsonValueKind.Array) return list;
+        int n = arr.GetArrayLength();
+        if (n >= 2 && n % 2 == 0 && arr.EnumerateArray().All(v => v.ValueKind == JsonValueKind.Number))
+        {
+            for (int i = 0; i + 1 < n; i += 2)
+                if (AsInt(arr[i]) is int fx && AsInt(arr[i + 1]) is int fy)
+                    list.Add(new Point(fx, fy));
+            return list;
+        }
+        foreach (var t in arr.EnumerateArray())
+        {
+            if (t.ValueKind == JsonValueKind.Array && t.GetArrayLength() >= 2 && AsInt(t[0]) is int x && AsInt(t[1]) is int y)
+                list.Add(new Point(x, y));
+            else if (t.ValueKind == JsonValueKind.Object && t.TryGetProperty("x", out var tx) && t.TryGetProperty("y", out var ty)
+                     && AsInt(tx) is int ox && AsInt(ty) is int oy)
+                list.Add(new Point(ox, oy));
+            else if (t.ValueKind == JsonValueKind.String)
+                AddTilePairs(t.GetString(), list);
+            else if (t.ValueKind == JsonValueKind.Array)
+                foreach (var s in t.EnumerateArray().Where(s => s.ValueKind == JsonValueKind.String))
+                    AddTilePairs(s.GetString(), list);
+        }
+        return list;
+    }
+
+    private static void AddTilePairs(string? text, List<Point> list)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        foreach (Match m in TilePair.Matches(text))
+            if (int.TryParse(m.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var x)
+                && int.TryParse(m.Groups[2].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var y))
+                list.Add(new Point(x, y));
     }
 }

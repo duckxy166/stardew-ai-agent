@@ -27,6 +27,7 @@ An `ai` seat takes these fields:
 | `ApiKey` | Your key for that provider (stored as plain text) |
 | `BaseUrl` | `openai` only: any OpenAI-compatible server, e.g. OpenRouter `https://openrouter.ai/api/v1`, Ollama `http://localhost:11434/v1` |
 | `Name` | The farmer's name (wins over `FarmhandNames`) |
+| `Nicknames` | Other names the farmers call this one by, e.g. `["พี่ส้ม"]`; `talk_to`, `villagers`, `say` and `give` accept them like the name. Default `[]` |
 
 ### Time modes
 
