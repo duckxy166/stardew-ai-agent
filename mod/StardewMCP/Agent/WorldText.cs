@@ -18,10 +18,30 @@ public static partial class WorldText
     public const string Legend =
         "@ you | . walkable | , tillable ground | # blocked | ~ water (refill the can, fish) | * fish bubbles (cast here: bites come faster) | D door/exit/ladder | A action tile (shop counter, etc) | " +
         "N villager | M monster | H building | b shipping bin | Z your bed | f furniture | O object/machine/chest | W weeds | w twig | S stone | " +
-        "L large stump/log/boulder | T tree | t young tree/sapling | s tree stump | Y fruit tree | u bush | g grass | F forage item | E festival egg (egg hunt) | " +
+        "L large stump/log/boulder | T tree | t young tree/sapling | s tree stump | Y fruit tree | u bush | g grass | F item to pick up by hand (forage, loose quartz/minerals: harvest it, tools don't break it) or a dropped item | E festival egg (egg hunt) | " +
         "= tilled soil (empty) | c crop needs water | C crop watered | ! crop ready to harvest | x dead crop";
 
     // FormatTime and DirName are in WorldText.Format.cs (no game types, compiled by the unit tests).
+
+    /// <summary>
+    /// An object picked up by hand (the action button), which no tool breaks: forage, and what the game spawns loose on the
+    /// ground, like quartz and minerals on mine floors (not forage by category). A farmer hit a Quartz 20 times twice with
+    /// the pickaxe for nothing, because look showed it as an object (2026-11-05).
+    /// </summary>
+    public static bool IsLoose(SObject obj) =>
+        obj.isForage() || (obj.IsSpawnedObject && !obj.IsWeeds() && !obj.IsTwig() && !obj.IsBreakableStone());
+
+    /// <summary>The item a debris on the ground carries, or null for visual debris (chunks, numbers). Stone, ore and coal from
+    /// a broken rock carry only an item id, no Item, until a farmer collects them.</summary>
+    public static string? DroppedItem(Debris deb)
+    {
+        if (deb.Chunks.Count == 0 || deb.debrisType.Value is not (Debris.DebrisType.OBJECT or Debris.DebrisType.RESOURCE or Debris.DebrisType.ARCHAEOLOGY))
+            return null;
+        if (deb.item != null)
+            return deb.item.DisplayName;
+        var id = deb.itemId.Value;
+        return string.IsNullOrEmpty(id) ? null : StardewValley.ItemRegistry.GetData(id)?.DisplayName ?? id;
+    }
 
     public static string Status()
     {
@@ -183,7 +203,7 @@ public static partial class WorldText
             if (obj.IsWeeds()) return ('W', "Weeds");
             if (obj.IsTwig()) return ('w', "Twig");
             if (obj.IsBreakableStone()) return ('S', "Stone");
-            if (obj.isForage()) return ('F', obj.DisplayName);
+            if (IsLoose(obj)) return ('F', obj.DisplayName);
             if (obj is Chest chest)
             {
                 if (chest.giftbox.Value) return ('O', "Gift box (open it with interact)");
@@ -224,10 +244,10 @@ public static partial class WorldText
 
         foreach (var deb in loc.debris)
         {
-            if (deb.item != null && deb.Chunks.Count > 0)
+            if (DroppedItem(deb) is { } dropped)
             {
                 var c = deb.Chunks[0].position.Value;
-                if ((int)(c.X / 64) == x && (int)(c.Y / 64) == y) return ('F', $"dropped {deb.item.DisplayName}");
+                if ((int)(c.X / 64) == x && (int)(c.Y / 64) == y) return ('F', $"dropped {dropped}");
             }
         }
 

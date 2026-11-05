@@ -85,7 +85,7 @@ internal static class Sightings
             return null;
         if (obj.QualifiedItemId is "(O)590" or "(O)SeedSpot")
             return new Sight(loc.NameOrUniqueName, x, y, obj.DisplayName, SightKind.DigSpot);
-        return obj.isForage() ? new Sight(loc.NameOrUniqueName, x, y, obj.DisplayName, SightKind.Forage) : null;
+        return WorldText.IsLoose(obj) ? new Sight(loc.NameOrUniqueName, x, y, obj.DisplayName, SightKind.Forage) : null;
     }
 
     /// <summary>A wild bush that would drop berries or a walnut if shaken now (tea bushes are someone's crop).</summary>
@@ -103,9 +103,9 @@ internal static class Sightings
     /// <summary>An item lying still on the ground (not one already flying to a farmer).</summary>
     private static Sight? DebrisSight(GameLocation loc, Debris debris)
     {
-        if (debris.item == null || debris.Chunks.Count == 0 || debris.chunksMoveTowardPlayer)
+        if (debris.chunksMoveTowardPlayer || WorldText.DroppedItem(debris) is not { } name)
             return null;
         var at = debris.Chunks[0].position.Value;
-        return new Sight(loc.NameOrUniqueName, (int)(at.X / 64), (int)(at.Y / 64), debris.item.DisplayName, SightKind.Dropped);
+        return new Sight(loc.NameOrUniqueName, (int)(at.X / 64), (int)(at.Y / 64), name, SightKind.Dropped);
     }
 }
