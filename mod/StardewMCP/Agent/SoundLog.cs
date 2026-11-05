@@ -30,6 +30,9 @@ public static class SoundLog
     private static bool _on;
     private static Func<MusicContext>? _activeMusicContext;
     private static readonly string?[] _lastMusic = new string?[Players.Seats];
+    private static readonly string?[] _nextMusic = new string?[Players.Seats];
+    private static readonly int[] _nextSamples = new int[Players.Seats];
+    private const int MusicHoldSamples = 4; // samples are 15 ticks apart: one second
     private static readonly UTF8Encoding NoBom = new(false);
 
     /// <summary>Patches only when the option is on, so a run without it plays exactly as before.</summary>
@@ -51,6 +54,7 @@ public static class SoundLog
         {
             Flush();
             Array.Clear(_lastMusic);
+            Array.Clear(_nextMusic);
         });
         monitor.Log("Sound log on: sounds_NNN.jsonl in the log folder.", LogLevel.Info);
     }
@@ -98,7 +102,15 @@ public static class SoundLog
             var ctx = _activeMusicContext?.Invoke() ?? MusicContext.Default;
             string track = Game1.getMusicTrackName(ctx);
             string key = ctx + "/" + track;
-            if (key == _lastMusic[screen])
+            // a farmhand screen in Town asks for springtown and spring_day_ambient in turn, one every sample
+            // (2026-11-05: 171 lines in a minute); a track must hold for a second before it counts
+            if (key == _lastMusic[screen] || key != _nextMusic[screen])
+            {
+                _nextMusic[screen] = key;
+                _nextSamples[screen] = 1;
+                return;
+            }
+            if (++_nextSamples[screen] < MusicHoldSamples)
                 return;
             _lastMusic[screen] = key;
             Write(new
