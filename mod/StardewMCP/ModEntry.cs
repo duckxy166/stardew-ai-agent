@@ -139,6 +139,7 @@ public class ModEntry : Mod
         {
             SleepWaitWatch.Tick(seat);
             ChestLedger.Tick(seat);
+            ChestLocks.Tick(e.IsMultipleOf(60), Monitor);
         }
         Briefing.Tick(seat, e.IsMultipleOf(300));
         if (e.IsMultipleOf(15))

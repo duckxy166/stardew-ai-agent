@@ -378,6 +378,9 @@ public static partial class AgentTools
         if (start == target) yield break;
 
         var path = new Pathfinder().FindPath(loc, start.ToVector2(), target.ToVector2());
+        // The only way may be where a villager stands (Sam in his front door after a talk): walk anyway, the stuck check below
+        // waits for them to step aside and names them if they don't.
+        path ??= new Pathfinder().FindPathThroughVillagers(loc, start.ToVector2(), target.ToVector2());
         if (path == null)
         {
             c.Fail(Reasons.NoPath, $"No walkable path to ({target.X},{target.Y}) on {loc.Name}.");
@@ -428,7 +431,8 @@ public static partial class AgentTools
                 if (Pathfinder.IsWalkable(loc, here.X, here.Y)) P.setTileLocation(here.ToVector2());
                 var avoid = new HashSet<Point>(loc.characters.Select(n => n.TilePoint).Where(p => p != target && p != here));
                 var re = new Pathfinder().FindPath(loc, here.ToVector2(), target.ToVector2(), avoid)
-                         ?? new Pathfinder().FindPath(loc, here.ToVector2(), target.ToVector2());
+                         ?? new Pathfinder().FindPath(loc, here.ToVector2(), target.ToVector2())
+                         ?? new Pathfinder().FindPathThroughVillagers(loc, here.ToVector2(), target.ToVector2());
                 if (re == null) break;
                 StartWalk(loc, re);
                 stuck = -200;
@@ -438,8 +442,16 @@ public static partial class AgentTools
         P.controller = null;
         P.Halt();
         if (P.TilePoint != target && Game1.currentLocation == loc)
-            c.Fail(Reasons.NoPath, $"Could not reach ({target.X},{target.Y}); stopped at ({P.TilePoint.X},{P.TilePoint.Y}).");
+        {
+            var blocker = BlockingVillager(loc, P.TilePoint);
+            c.Fail(Reasons.NoPath, $"Could not reach ({target.X},{target.Y}); stopped at ({P.TilePoint.X},{P.TilePoint.Y})." +
+                                   (blocker != null ? $" {blocker.displayName} is standing in the way at ({blocker.TilePoint.X},{blocker.TilePoint.Y}): wait a little, then try again." : ""));
+        }
     }
+
+    /// <summary>A villager on a tile next to <paramref name="here"/>: who a walk that stopped there is most likely blocked by.</summary>
+    private static NPC? BlockingVillager(GameLocation loc, Point here) =>
+        loc.characters.FirstOrDefault(n => !n.IsMonster && !n.IsInvisible && WalkMath.Steps(here, n.TilePoint) == 1);
 
     /// <summary>How a walk that ran into a locked door fails.</summary>
     internal const string LockedDoorNote = "A locked door is in the way";

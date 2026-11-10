@@ -27,6 +27,13 @@ public partial class Pathfinder
     public List<Vector2>? FindPath(GameLocation location, Vector2 start, Vector2 goal, ISet<Point> avoid) =>
         FindPath(new AvoidingGrid(new LocationGrid(location), avoid), start, goal);
 
+    /// <summary>
+    /// As <see cref="FindPath(GameLocation, Vector2, Vector2)"/>, stepping through villagers as if they weren't there: for a
+    /// walk whose only way is where a villager stands (Sam in his front door). The walk then waits for them to step aside.
+    /// </summary>
+    public List<Vector2>? FindPathThroughVillagers(GameLocation location, Vector2 start, Vector2 goal) =>
+        FindPath(new LocationGrid(location, ignoreVillagers: true), start, goal);
+
     /// <summary>Route to the nearest of <paramref name="goals"/> by walking (see <see cref="FindPathToAny(IWalkableGrid, Vector2, IEnumerable{Point})"/>).</summary>
     public List<Vector2>? FindPathToAny(GameLocation location, Vector2 start, IEnumerable<Point> goals) =>
         FindPathToAny(new LocationGrid(location), start, goals);
@@ -36,14 +43,18 @@ public partial class Pathfinder
     /// with anything the game would stop the player on (walls, water, objects, crops with
     /// trellises, trees, buildings, furniture, villagers, animals).
     /// </summary>
-    public static bool IsWalkable(GameLocation location, int x, int y)
+    public static bool IsWalkable(GameLocation location, int x, int y) => IsWalkable(location, x, y, ignoreVillagers: false);
+
+    /// <summary>As <see cref="IsWalkable(GameLocation, int, int)"/>; <paramref name="ignoreVillagers"/> leaves villagers and
+    /// other farmers out (the game's own pathfinding flag skips them).</summary>
+    public static bool IsWalkable(GameLocation location, int x, int y, bool ignoreVillagers)
     {
         if (!location.isTileOnMap(x, y))
             return false;
 
         // Same footprint the game uses for a farmer standing on the tile.
         var feet = new Rectangle(x * Game1.tileSize + 8, y * Game1.tileSize + 16, 48, 32);
-        if (!location.isCollidingPosition(feet, Game1.viewport, true, 0, false, Game1.player))
+        if (!location.isCollidingPosition(feet, Game1.viewport, true, 0, false, Game1.player, pathfinding: ignoreVillagers))
             return true;
 
         return CanPassDoor(location, x, y, Game1.player);
@@ -71,9 +82,10 @@ public partial class Pathfinder
     private sealed class LocationGrid : IWalkableGrid
     {
         private readonly GameLocation _location;
+        private readonly bool _ignoreVillagers;
 
-        public LocationGrid(GameLocation location) => _location = location;
+        public LocationGrid(GameLocation location, bool ignoreVillagers = false) { _location = location; _ignoreVillagers = ignoreVillagers; }
 
-        public bool IsWalkable(int x, int y) => Pathfinder.IsWalkable(_location, x, y);
+        public bool IsWalkable(int x, int y) => Pathfinder.IsWalkable(_location, x, y, _ignoreVillagers);
     }
 }
