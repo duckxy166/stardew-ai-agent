@@ -24,7 +24,7 @@ Every tool the AI can call, grouped by job. Each farmer's MCP endpoint (`/mcp`, 
 
 | Tool | Arguments | What it does |
 |---|---|---|
-| `walk_to` | `x`, `y` | Pathfind to a tile on the current map. The result lists the forage, spots to dig, berry bushes and dropped items passed on the way that are still there. Blocked on the way (a villager), it plans again around them, up to 3 times; a locked door stops it with `no_path` and the door's message. Wedged into a wall, the farmer first steps out to an open diagonal tile |
+| `walk_to` | `x`, `y` | Pathfind to a tile on the current map. The result lists the forage, spots to dig, berry bushes and dropped items passed on the way that are still there. Blocked on the way (a villager), it plans again around them, up to 3 times; when a villager stands in the only way (a doorway), it walks on and waits for them to step aside; a locked door stops it with `no_path` and the door's message. Wedged into a wall, the farmer first steps out to an open diagonal tile |
 | `travel_to` | `location` | Go to another map. A shop owner's or villager's name also works; a closed door says when it opens. Lists what was seen on the way, like `walk_to`. In co-op the game lets farmers into a festival only together: it waits up to a minute of running time for the others (they are told), then gives up with `not_ready` instead of leaving you stuck in the box. When the nearest way out to the next map can't be reached (a locked bedroom door in the way), it tries the other ways out |
 | `mount`, `dismount` | | Ride the horse (needs a Stable) and get off |
 

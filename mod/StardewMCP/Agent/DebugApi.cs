@@ -79,6 +79,7 @@ public static class DebugApi
             Op("hang", Hang, needsWorld: false),
             Op("perception", PerceptionOp),
             Op("set_display", SetDisplay),
+            Op("place_npc", PlaceNpc),
         }.ToDictionary(t => t.Name);
     }
 
@@ -388,6 +389,22 @@ public static class DebugApi
     }
 
     /// <summary>Deepest mine floor reached, which decides the elevator's floors.</summary>
+    /// <summary>Put a villager on a tile of the current map and hold them still for <c>seconds</c> (default 60): a villager
+    /// standing in a doorway, for the walk tests.</summary>
+    private static IEnumerator PlaceNpc(JsonElement a, CallContext c)
+    {
+        var npc = Game1.getCharacterFromName(S(a, "name"));
+        if (npc == null) { c.Fail($"No villager called \"{S(a, "name")}\""); yield break; }
+        var loc = Game1.currentLocation;
+        int x = I(a, "x", 0), y = I(a, "y", 0);
+        Game1.warpCharacter(npc, loc, new Microsoft.Xna.Framework.Vector2(x, y));
+        npc.controller = null;
+        npc.Halt();
+        npc.movementPause = I(a, "seconds", 60) * 1000;
+        c.Result = $"{npc.Name} placed at ({x},{y}) on {loc.Name}, held for {I(a, "seconds", 60)} s";
+        yield break;
+    }
+
     private static IEnumerator SetMineLevel(JsonElement a, CallContext c)
     {
         StardewValley.Locations.MineShaft.lowestLevelReached = Math.Clamp(I(a, "n", 0), 0, 120);
