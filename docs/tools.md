@@ -25,7 +25,7 @@ Every tool the AI can call, grouped by job. Each farmer's MCP endpoint (`/mcp`, 
 | Tool | Arguments | What it does |
 |---|---|---|
 | `walk_to` | `x`, `y` | Pathfind to a tile on the current map. The result lists the forage, spots to dig, berry bushes and dropped items passed on the way that are still there. Blocked on the way (a villager), it plans again around them, up to 3 times; a locked door stops it with `no_path` and the door's message. Wedged into a wall, the farmer first steps out to an open diagonal tile |
-| `travel_to` | `location` | Go to another map. A shop owner's or villager's name also works; a closed door says when it opens. Lists what was seen on the way, like `walk_to`. In co-op the game lets farmers into a festival only together: it waits up to a minute of running time for the others (they are told), then gives up with `not_ready` instead of leaving you stuck in the box |
+| `travel_to` | `location` | Go to another map. A shop owner's or villager's name also works; a closed door says when it opens. Lists what was seen on the way, like `walk_to`. In co-op the game lets farmers into a festival only together: it waits up to a minute of running time for the others (they are told), then gives up with `not_ready` instead of leaving you stuck in the box. When the nearest way out to the next map can't be reached (a locked bedroom door in the way), it tries the other ways out |
 | `mount`, `dismount` | | Ride the horse (needs a Stable) and get off |
 
 ## Farm
@@ -35,7 +35,7 @@ Every tool the AI can call, grouped by job. Each farmer's MCP endpoint (`/mcp`, 
 | `use_tool` | `tool`, `tiles`, *`max_hits`* | Use a tool on one or more tiles (hoe, watering can, axe, pickaxe, scythe...) |
 | `plant` | `item`, *`tiles`* or *`area`* | Plant seeds or fertilizer on tilled soil: listed tiles, an `[x, y, w, h]` area, or no tiles at all = every empty tilled tile on the map |
 | `harvest` | `tiles` | Harvest crops or forage on the given tiles |
-| `water_all` | *`whose`* | Water every dry crop on the map (`whose: "mine"` = only your own); refills the can at the nearest water and says whose crops it watered |
+| `water_all` | *`whose`* | Water every dry crop on the map (`whose: "mine"` = only your own); refills the can at the nearest water it can reach and says whose crops it watered |
 | `harvest_all` | | Collect every ready crop and forage item on the map |
 | `clear_area` | `x`, `y`, `w`, `h` | Clear a rectangle (up to 100 tiles) with the right tool; large stumps and boulders are skipped and reported |
 | `till_area` | `x`, `y`, `w`, `h` | Till a rectangle with the hoe |
@@ -59,7 +59,7 @@ Read from the game's own data, costs no game time.
 | `item_info` ⚡ | `name` | An object's sell prices by quality, what it restores, shops that sell it and recipes that use it |
 | `calendar` ⚡ | *`days`* | Today and the next days: festivals, birthdays, the next festival, the main shops' hours and closed days |
 | `villagers` ⚡ | *`name`* | Everyone: where they are, hearts, talked and gifted today and this week, birthdays. With a name: the gift tastes found out so far and what a date or a proposal still needs. A fellow farmer's name says to talk with `say` |
-| `quests` ⚡ | | Quest journal with story, giver, progress and reward; today's Help Wanted request and who took it; Special Orders |
+| `quests` ⚡ | *`action`*, *`quest`* | Quest journal with story, giver, progress and reward; finished quests whose money is not collected yet; today's Help Wanted request and who took it; Special Orders. `action: "claim_reward"` (an action, not ⚡) opens the journal and collects a finished quest's money: `quest` is its title, or leave it out for the first one |
 
 ## Items, crafting and cooking
 
@@ -122,7 +122,7 @@ Buildings and animals are paid from the caller's own money and items.
 | Tool | Arguments | What it does |
 |---|---|---|
 | `fish` | *`tries`* | Walk to the best shore, cast, play the BobberBar minigame and pick up treasure; one line per cast. Needs a rod |
-| `fight` | `seconds`, *`eat_below`* | Fight nearby monsters: equips the best weapon, walks to the nearest one and swings; stops when all clear, at 30% health or when a menu opens. `eat_below` (HP %) eats healing food on the way |
+| `fight` | `seconds`, *`eat_below`* | Fight nearby monsters: equips the best weapon, walks to the nearest one and swings; stops when all clear, at 30% health or when a menu opens. `eat_below` (HP %) eats healing food on the way. A rock crab in its shell gets the Pickaxe; what a weapon can't hurt (armored bug, downed mummy, a monster whose health does not move in 8 swings) is left alone and named in the result |
 | `leave_mine` | | Get out of the Mines from any floor: climbs the up ladders, or warps out when health is low, it is 11 PM or the ladder can't be reached |
 | `search_trash` | *`x`*, *`y`* | Dig through a trash can; a villager who sees it likes you less |
 | `watch_tv` | *`channel`* | Watch a channel: weather, fortune, Queen of Sauce (learns the recipe), tips |
@@ -136,7 +136,7 @@ In the Mines the footer shows HP, and any long action except `fight`, `eat` and 
 |---|---|---|
 | `interact` | *`x`*, *`y`*, *`holding`* | The action button on a tile: doors, objects, machines, NPCs. `holding` holds an item first (load a machine, use a totem, a gift) |
 | `respond` | *`option`* | Answer the open dialogue question |
-| `close_menu` | | Close the open menu; accepts a letter's quest and takes treasure or gift items that fit |
+| `close_menu` | | Close the open menu; accepts a letter's quest and takes treasure or gift items that fit. On the box that waits for a proposal's answer it withdraws the proposal |
 | `menu` | *`action`*, *`item`*, *`count`*, *`quality`*, *`option`*, *`value`*, *`text`* | Read any open menu, then use it: take or put (chests), choose (mine elevator), amount (send money), type (names), ok or cancel, or click a listed button |
 | `choose_profession` | `option`, *`skill`* | Make a pending profession choice (skill level 5 and 10). Permanent |
 

@@ -8,6 +8,7 @@ using HarmonyLib;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.BellsAndWhistles;
 using StardewValley.Menus;
 using StardewValley.Quests;
 
@@ -28,10 +29,15 @@ public static partial class AgentTools
             Name = "quests",
             Description = "Your quests and the shared goals. Journal: every open quest with its type (Help Wanted or Story), who asked, the story text, the objective and progress, days left and reward. " +
                           "Help Wanted board: today's request in Town and whether another player already took it (first come, first served, one request a day). " +
-                          "Also the team's Special Orders and the Community Center / Joja line.",
-            Schema = Obj(new { }),
-            Instant = true,
-            Run = (a, c) => Instant(c, QuestsText(a))
+                          "Also finished quests whose money is not collected yet, the team's Special Orders and the Community Center / Joja line. " +
+                          "action=claim_reward opens the journal and collects the money of a finished quest: quest is its exact title, or leave it out for the first one.",
+            Schema = Obj(new {
+                action = new { type = "string", @enum = new[] { "list", "claim_reward" } },
+                quest = Str("Title of a finished quest, as quests lists it"),
+                reason = Str(ReasonDesc)
+            }),
+            InstantFor = a => S(a, "action").Trim().ToLowerInvariant() is "" or "list",
+            Run = QuestJournal
         },
         new()
         {
@@ -42,6 +48,66 @@ public static partial class AgentTools
             Run = AcceptQuest
         }
     };
+
+    // ------------------------------------------------------------------ claim_reward
+
+    /// <summary>
+    /// Finished journal quests and Special Orders whose money is still in the journal: the game pays a finished quest only
+    /// when the player clicks its reward there, and nothing else in the mod opens the journal. Ported from
+    /// Pichaya31847/stardew-ai-agent (MIT, commit efc8be3).
+    /// </summary>
+    private static IEnumerable<IQuest> JournalRewards() => P.questLog
+        .Where(q => q != null && !q.destroy.Value).Cast<IQuest>()
+        .Concat(P.team.specialOrders.Cast<IQuest>())
+        .Where(q => !q.IsHidden() && q.ShouldDisplayAsComplete() && q.HasMoneyReward());
+
+    private static IEnumerator QuestJournal(JsonElement a, CallContext c)
+    {
+        var action = S(a, "action").Trim().ToLowerInvariant();
+        if (action is "" or "list") { c.Result = QuestsText(a); yield break; }
+        if (action != "claim_reward") { c.Fail(Reasons.InvalidArgs, "action is list or claim_reward."); yield break; }
+        if (Game1.activeClickableMenu != null) { c.Fail(Reasons.MenuOpen, "A menu or dialogue is open. Close it first."); yield break; }
+        var title = S(a, "quest").Trim();
+        var candidates = JournalRewards().Where(q => title.Length == 0 || string.Equals(q.GetName(), title, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (candidates.Count == 0)
+        {
+            c.Fail(Reasons.NotFound, title.Length == 0
+                ? "No finished quest has money waiting in your journal."
+                : $"No finished quest called \"{title}\" has money waiting in your journal. quests lists the ones that do.");
+            yield break;
+        }
+        var target = candidates[0];
+        var menu = new QuestLog();
+        Game1.activeClickableMenu = menu;
+        try
+        {
+            var pages = AccessTools.Field(typeof(QuestLog), "pages")?.GetValue(menu) as List<List<IQuest>>;
+            int page = pages?.FindIndex(p => p.Contains(target)) ?? -1;
+            if (page < 0) { c.Fail(Reasons.NotFound, $"The journal does not show \"{target.GetName()}\"."); yield break; }
+            AccessTools.Field(typeof(QuestLog), "currentPage")?.SetValue(menu, page);
+            Click(menu, menu.questLogButtons[pages![page].IndexOf(target)]);
+            yield return Ticks(20);
+            if (!ReferenceEquals(AccessTools.Field(typeof(QuestLog), "_shownQuest")?.GetValue(menu), target))
+            {
+                c.Fail($"The journal did not open \"{target.GetName()}\".");
+                yield break;
+            }
+            int reward = target.GetMoneyReward();
+            // QuestLog draws the reward lower when a timed quest's long title pushes the days-left line down, and takes the click there.
+            int offset = target.IsTimedQuest() && target.GetDaysLeft() > 0 && SpriteText.getWidthOfString(target.GetName()) > menu.width / 2 ? 48 : 0;
+            var center = menu.rewardBox.bounds.Center;
+            menu.receiveLeftClick(center.X, center.Y + offset);
+            yield return Ticks(20);
+            if (target.HasMoneyReward())
+                c.Fail($"The reward of \"{target.GetName()}\" was clicked but the {reward}g is still in the journal.");
+            else
+                c.Result = $"Collected {reward}g for \"{target.GetName()}\". You now have {P.Money}g.";
+        }
+        finally
+        {
+            if (ReferenceEquals(Game1.activeClickableMenu, menu)) menu.exitThisMenu();
+        }
+    }
 
     // ------------------------------------------------------------------ reading quests
 
@@ -219,6 +285,12 @@ public static partial class AgentTools
         if (mine.Count == 0) sb.AppendLine("  none");
         for (int i = 0; i < mine.Count && i < 12; i++) sb.AppendLine(QuestEntry(mine[i], i + 1));
         if (mine.Count > 12) sb.AppendLine($"  ... and {mine.Count - 12} more");
+        var rewards = JournalRewards().ToList();
+        if (rewards.Count > 0)
+        {
+            sb.AppendLine("Finished, money not collected yet (quests with action=claim_reward collects it):");
+            foreach (var r in rewards) sb.AppendLine($"  {r.GetName()}: {r.GetMoneyReward()}g");
+        }
         sb.AppendLine(BoardText());
         var orders = SpecialOrderLines();
         if (orders.Count > 0)

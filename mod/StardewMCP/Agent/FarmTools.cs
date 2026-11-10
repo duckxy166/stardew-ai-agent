@@ -448,13 +448,22 @@ public static partial class AgentTools
         var loc = Loc;
         var can = (WateringCan)P.Items[slot];
         var me = P.TilePoint;
-        var waters = FarmTilesWhere(loc, FarmIsWater).OrderBy(t => FarmDist(me, t)).Take(6).ToList();
+        // Only a shore tile can be stood next to, and the six nearest water tiles can all be one fenced-off pond. A shore
+        // that can't be reached rules out the water around it, so the next pond is tried.
+        // Ported from Pichaya31847/stardew-ai-agent (MIT, commit 7d4f2fe; their day 56: the can stayed empty beside a pond).
+        var waters = FarmTilesWhere(loc, FarmIsWater)
+            .Where(t => Dirs.Any(d => Pathfinder.IsWalkable(loc, t.X + d.X, t.Y + d.Y)))
+            .OrderBy(t => FarmDist(me, t)).ToList();
         if (waters.Count == 0) { c.Fail($"the can is empty and {loc.Name} has no water tile to refill it"); yield break; }
+        var failed = new List<Point>();
+        int tries = 0;
         foreach (var water in waters)
         {
+            if (failed.Any(f => FarmDist(f, water) <= 8)) continue;
+            if (++tries > 6) break;
             var walk = new CallContext();
             yield return WalkAdjacent(water, walk);
-            if (!walk.Ok) continue;
+            if (!walk.Ok) { failed.Add(water); continue; }
             P.CurrentToolIndex = slot;
             yield return Swing(water);
             if (can.WaterLeft > 0) yield break;
