@@ -262,7 +262,7 @@ function render() {
   $("dayTitle").textContent = t("dayButton", data.day);
   $("diary").textContent = data.diary || t("noDiary");
   $("diaryCard").classList.toggle("empty", !data.diary);
-  const show = { think: $("fThink").checked, action: $("fAct").checked, result: $("fRes").checked, system: $("fSys").checked, diary: true };
+  const show = { think: $("fThink").checked, action: $("fAct").checked, result: $("fRes").checked, system: $("fSys").checked, diary: true, say: true, journal: true };
   const es = data.entries;
   const acts = es.filter(e => e.kind === "action").length;
   const fails = es.filter(e => e.kind === "result" && e.ok === false).length;

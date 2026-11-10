@@ -591,6 +591,15 @@ public static partial class AgentTools
         Face(target);
         P.lastClick = new Vector2(target.X * 64 + 32, target.Y * 64 + 32);
         P.BeginUsingTool();
+        // An upgraded Hoe or Watering Can charges for as long as the use button is held, and no button is held here, so it
+        // charged to its full area and stayed there. Let go at once, the way a tap works: one tile, at no power.
+        // Ported from Pichaya31847/stardew-ai-agent (MIT, commit 2f21e41; their day 266 with a Copper Watering Can).
+        if (P.CurrentTool is Hoe or WateringCan && P.CurrentTool.UpgradeLevel > 0)
+        {
+            for (int i = 0; i < 10 && !(P.UsingTool && P.canReleaseTool); i++) yield return null;
+            P.toolPower.Value = 0;
+            if (P.UsingTool && P.canReleaseTool) P.EndUsingTool();
+        }
         yield return Ticks(6);
         yield return WaitIdle();
     }
@@ -923,6 +932,19 @@ public static partial class AgentTools
     private static IEnumerator CloseMenu(JsonElement a, CallContext c)
     {
         if (Game1.activeClickableMenu == null) { c.Result = "No menu open."; yield break; }
+        // The box that waits for a proposal's answer comes back unless the proposal itself is cancelled, and the other
+        // farmer's game has to confirm that. Ported from Pichaya31847/stardew-ai-agent (MIT, commit 464e777; their day 68:
+        // 77 close_menu calls answered "closed" while the box stayed).
+        if (Game1.activeClickableMenu is PendingProposalDialog waiting)
+        {
+            waiting.cancelProposal(P);
+            for (int i = 0; i < 300 && Game1.activeClickableMenu == waiting; i++) yield return null;
+            if (Game1.activeClickableMenu == waiting)
+                c.Fail(Reasons.MenuOpen, "The proposal could not be withdrawn yet: the other farmer's game has not confirmed it. Try close_menu again in a moment.");
+            else
+                c.Result = "Proposal withdrawn. Menu closed.";
+            yield break;
+        }
         var notes = new List<string>();
         yield return ClaimBeforeClose(Game1.activeClickableMenu, notes);
         if (Game1.activeClickableMenu != null)
@@ -1003,6 +1025,7 @@ public static partial class AgentTools
             foreach (var e in Exits(loc))
             {
                 if (prev.ContainsKey(e.Target) || Game1.getLocationFromName(e.Target) == null) continue;
+                if (IsBackwoodsTunnel(cur, e.Target)) continue;
                 prev[e.Target] = cur;
                 queue.Enqueue(e.Target);
             }
@@ -1022,6 +1045,12 @@ public static partial class AgentTools
         yield return WaitIdle();
         var route = FindRoute(Loc.Name, dest);
         if (route == null) { c.Fail(Reasons.NoPath, $"No known route from {Loc.Name} to {dest}."); yield break; }
+        // Already in that corner of Backwoods: the only way out is back through the Tunnel.
+        if (Loc.Name == "Backwoods" && route.Count > 1
+            && !Exits(Loc).Any(e => e.Target == route[1] && ExitReachable(Loc, P.TilePoint, e))
+            && Exits(Loc).Any(e => e.Target == "Tunnel" && ExitReachable(Loc, P.TilePoint, e))
+            && FindRoute("Tunnel", dest) is { } viaTunnel)
+            route = viaTunnel.Prepend("Backwoods").ToList();
 
         for (int hop = 1; hop < route.Count; hop++)
         {
@@ -1038,40 +1067,58 @@ public static partial class AgentTools
                 continue;
             }
             var me = P.TilePoint;
-            var exit = Exits(loc).Where(e => e.Target == next)
-                .OrderBy(e => Math.Abs(e.Tile.X - me.X) + Math.Abs(e.Tile.Y - me.Y)).FirstOrDefault();
-            if (exit == null) { c.Fail(Reasons.NoPath, $"No exit from {loc.Name} to {next}."); yield break; }
+            var exits = Exits(loc).Where(e => e.Target == next)
+                .OrderBy(e => Math.Abs(e.Tile.X - me.X) + Math.Abs(e.Tile.Y - me.Y)).ToList();
+            if (exits.Count == 0) { c.Fail(Reasons.NoPath, $"No exit from {loc.Name} to {next}."); yield break; }
+            // The nearest way out can sit behind a locked bedroom door, so the ways a walking route reaches come first and
+            // the next one is tried when a walk fails. Ported from Pichaya31847/stardew-ai-agent (MIT, commit 7d4f2fe; their
+            // day 21: a farmer walked into the bedroom door of Robin's house until bedtime).
+            if (exits.Count > 1)
+                exits = exits.OrderBy(e => ExitReachable(loc, me, e) ? 0 : 1).Take(MaxExitTries).ToList(); // a stable sort: nearest first within each group
 
-            var sub = new CallContext();
-            if (exit.IsDoor)
+            var exit = exits[0];
+            string? walkFail = null, walkReason = null;
+            foreach (var cand in exits)
             {
-                // Stand below the door and open it; the game checks opening hours/locks.
-                var d = exit.Tile;
-                var stand = new Point(d.X, d.Y + 1);
-                if (Pathfinder.IsWalkable(loc, stand.X, stand.Y)) yield return WalkTo(stand, sub);
-                else yield return WalkAdjacent(d, sub);
-                if (Loc == loc)
+                exit = cand;
+                walkFail = null;
+                var sub = new CallContext();
+                if (exit.IsDoor)
                 {
-                    if (!sub.Ok) { c.Fail(sub.Reason ?? Reasons.NoPath, $"Can't reach the door to {next}: {sub.Result}"); yield break; }
-                    Face(d);
-                    Game1.tryToCheckAt(d.ToVector2(), P);
+                    // Stand below the door and open it; the game checks opening hours/locks.
+                    var d = exit.Tile;
+                    var stand = new Point(d.X, d.Y + 1);
+                    if (Pathfinder.IsWalkable(loc, stand.X, stand.Y)) yield return WalkTo(stand, sub);
+                    else yield return WalkAdjacent(d, sub);
+                    if (Loc == loc)
+                    {
+                        if (!sub.Ok) { walkFail = $"Can't reach the door to {next}: {sub.Result}"; walkReason = sub.Reason; continue; }
+                        Face(d);
+                        Game1.tryToCheckAt(d.ToVector2(), P);
+                    }
                 }
+                else
+                {
+                    // Edge exits sit just off the walkable map: get as close as possible, then step through.
+                    var near = Pathfinder.IsWalkable(loc, exit.Tile.X, exit.Tile.Y) ? exit.Tile : NearestWalkable(loc, exit.Tile, 3);
+                    if (near == null) { walkFail = $"Can't find a walkable tile near the exit to {next}."; walkReason = Reasons.NoPath; continue; }
+                    yield return WalkTo(near.Value, sub);
+                    if (Loc == loc && !Game1.isWarping)
+                    {
+                        // The last step onto an edge exit is often blocked by the map edge itself, so being right next to it is enough.
+                        var here = P.TilePoint;
+                        bool atExit = Math.Abs(here.X - exit.Tile.X) + Math.Abs(here.Y - exit.Tile.Y) <= 1;
+                        if (!sub.Ok && !atExit) { walkFail = $"Can't reach the exit to {next}: {sub.Result}"; walkReason = sub.Reason; continue; }
+                        var w = exit.Warp!;
+                        Game1.warpFarmer(w.TargetName, w.TargetX, w.TargetY, false);
+                    }
+                }
+                break;
             }
-            else
+            if (walkFail != null)
             {
-                // Edge exits sit just off the walkable map: get as close as possible, then step through.
-                var near = Pathfinder.IsWalkable(loc, exit.Tile.X, exit.Tile.Y) ? exit.Tile : NearestWalkable(loc, exit.Tile, 3);
-                if (near == null) { c.Fail(Reasons.NoPath, $"Can't find a walkable tile near the exit to {next}."); yield break; }
-                yield return WalkTo(near.Value, sub);
-                if (Loc == loc && !Game1.isWarping)
-                {
-                    // The last step onto an edge exit is often blocked by the map edge itself, so being right next to it is enough.
-                    var here = P.TilePoint;
-                    bool atExit = Math.Abs(here.X - exit.Tile.X) + Math.Abs(here.Y - exit.Tile.Y) <= 1;
-                    if (!sub.Ok && !atExit) { c.Fail(sub.Reason ?? Reasons.NoPath, $"Can't reach the exit to {next}: {sub.Result}"); yield break; }
-                    var w = exit.Warp!;
-                    Game1.warpFarmer(w.TargetName, w.TargetX, w.TargetY, false);
-                }
+                c.Fail(walkReason ?? Reasons.NoPath, walkFail + (exits.Count > 1 ? $" (tried {exits.Count} ways out to {next})" : ""));
+                yield break;
             }
 
             for (int i = 0; i < 300 && Loc == loc && Game1.activeClickableMenu is not ReadyCheckDialog; i++) yield return null;
@@ -1093,6 +1140,33 @@ public static partial class AgentTools
             if (Loc.Name != next) { c.Fail($"Ended up in {Loc.Name} instead of {next}."); yield break; }
             yield return Ticks(20);
         }
+    }
+
+    /// <summary>How many ways out to the next map one hop tries. A wide map edge is many warp tiles side by side.</summary>
+    private const int MaxExitTries = 4;
+
+    /// <summary>
+    /// The Tunnel opens into a corner of Backwoods that is walled off from the rest of that map, so no route goes through
+    /// it in either direction; the Tunnel itself is reached from the Bus Stop. Ported from Pichaya31847/stardew-ai-agent
+    /// (MIT, commit 464e777; their days 58-101: 36 failed trips, one farmer shut in there until 2:00).
+    /// </summary>
+    private static bool IsBackwoodsTunnel(string from, string to) =>
+        (from == "Tunnel" && to == "Backwoods") || (from == "Backwoods" && to == "Tunnel");
+
+    /// <summary>A walking route exists from <paramref name="from"/> to where this exit is used.</summary>
+    private static bool ExitReachable(GameLocation loc, Point from, Exit e)
+    {
+        Point? goal;
+        if (e.IsDoor)
+        {
+            var below = new Point(e.Tile.X, e.Tile.Y + 1);
+            goal = Pathfinder.IsWalkable(loc, below.X, below.Y) ? below
+                : Dirs.Select(d => new Point(e.Tile.X + d.X, e.Tile.Y + d.Y)).Where(n => Pathfinder.IsWalkable(loc, n.X, n.Y)).Cast<Point?>().FirstOrDefault();
+        }
+        else
+            goal = Pathfinder.IsWalkable(loc, e.Tile.X, e.Tile.Y) ? e.Tile : NearestWalkable(loc, e.Tile, 3);
+        if (goal == null) return false;
+        return goal.Value == from || new Pathfinder().FindPath(loc, from.ToVector2(), goal.Value.ToVector2()) != null;
     }
 
     private static Point? NearestWalkable(GameLocation loc, Point p, int radius)

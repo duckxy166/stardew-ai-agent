@@ -26,7 +26,7 @@ makes every choice.
 
 ## ⛏️ Mines and combat
 
-- Fight nearby monsters with the best weapon, eating when health drops (`fight`)
+- Fight nearby monsters with the best weapon, eating when health drops; rock crab shells get the Pickaxe (`fight`)
 - Get out of the Mines from any floor, or warp out when it gets dangerous (`leave_mine`)
 - Take the elevator, crack geodes at Clint's (`menu`, `crack_geode`)
 - Long actions stop by themselves when a monster hurts you
@@ -63,7 +63,7 @@ makes every choice.
 
 ## 📜 Quests and the Community Center
 
-- Quest journal, Help Wanted board, Special Orders (`quests`, `accept_quest`, `special_orders`)
+- Quest journal, Help Wanted board, Special Orders; a finished quest's money is collected from the journal (`quests`, `accept_quest`, `special_orders`)
 - Community Center bundles and donations, gold for the Vault (`bundles`, `donate_bundle`)
 - The Joja route, with a warning before the membership that changes everyone's game (`joja`)
 - Museum donations and Gunther's rewards (`museum`)

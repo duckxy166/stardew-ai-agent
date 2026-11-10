@@ -677,9 +677,12 @@ public static class SaveFolder
 
     public static string? Name => Context.IsWorldReady ? Loaded ?? Constants.SaveFolderName : null;
 
+    /// <summary>On the host screen only. Constants.SaveFolderName is per screen: on a farmhand screen it reads "_123" instead
+    /// of "Farm_123", so with a save loaded by hand (Pending unset) P2's journal and stats keys never matched the farm's.
+    /// Remember the host's name for every screen. Ported from Pichaya31847/stardew-ai-agent (MIT, commit efc8be3).</summary>
     public static void OnSaveLoaded()
     {
-        Loaded = Pending;
+        Loaded = Pending ?? Constants.SaveFolderName;
         Pending = null;
     }
 }

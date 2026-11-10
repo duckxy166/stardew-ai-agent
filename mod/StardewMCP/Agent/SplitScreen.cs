@@ -113,9 +113,13 @@ public static class SplitScreen
             return;
 
         int free = 0;
+        var online = Game1.getOnlineFarmers().Select(f => f.UniqueMultiplayerID).ToHashSet();
         Utility.ForEachLocation(l =>
         {
-            if (l is Cabin c && (!c.HasOwner || !c.IsOwnerActivated)) free++;
+            // A farmhand who joined before owns its cabin for good and takes it again after a load. Only a cabin whose owner
+            // is online now is taken: counting just the never-used ones built duplicate cabins on a reloaded save.
+            // Ported from Pichaya31847/stardew-ai-agent (MIT, commit efc8be3).
+            if (l is Cabin c && (!c.HasOwner || !online.Contains(c.owner.UniqueMultiplayerID))) free++;
             return true;
         });
         if (free == 0)
